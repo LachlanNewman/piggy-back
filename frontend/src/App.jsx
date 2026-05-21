@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from './auth/AuthContext'
+import { useAuth } from 'react-oidc-context'
 import SignupForm from './SignupForm'
 
 export default function App() {
-  const { isAuthenticated, isLoading, user, login, logout } = useAuth()
+  const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect } = useAuth()
   const [message, setMessage] = useState(null)
   const [health, setHealth] = useState(null)
 
@@ -33,7 +33,7 @@ export default function App() {
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
         <h1>React + Go</h1>
         <p>Please log in to continue.</p>
-        <button onClick={login}>Log in</button>
+        <button onClick={signinRedirect}>Log in</button>
       </div>
     )
   }
@@ -42,7 +42,7 @@ export default function App() {
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>React + Go</h1>
-        <button onClick={logout}>Log out</button>
+        <button onClick={signoutRedirect}>Log out</button>
       </div>
       <p>Logged in as <strong>{user.profile?.email ?? user.profile?.sub}</strong></p>
       <p>Message: <strong>{message ?? '...'}</strong></p>

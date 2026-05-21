@@ -1,22 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import userManager from '../auth/userManager'
+import { useAuth } from 'react-oidc-context'
 
 export default function CallbackPage() {
   const navigate = useNavigate()
-  const [error, setError] = useState(null)
+  const { isLoading, isAuthenticated, error } = useAuth()
 
   useEffect(() => {
-    userManager.signinRedirectCallback()
-      .then(() => navigate('/', { replace: true }))
-      .catch(err => setError(err.message ?? 'Login failed'))
-  }, [navigate])
+    if (!isLoading && isAuthenticated) {
+      navigate('/', { replace: true })
+    }
+  }, [isLoading, isAuthenticated, navigate])
 
   if (error) {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
         <h2>Login failed</h2>
-        <p>{error}</p>
+        <p>{error.message}</p>
       </div>
     )
   }
