@@ -18,7 +18,7 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Start services with `docker-compose up --build` and confirm the app loads without console errors
-- [ ] 5.2 Complete a full login flow end-to-end: unauthenticated state → login redirect → callback → authenticated state with user profile displayed
-- [ ] 5.3 Reload the page while authenticated and confirm session is restored via silent renew (refresh token cookie)
-- [ ] 5.4 Trigger logout and confirm local state clears and browser redirects to identity provider end-session
+- [x] 5.1 Start services with `docker-compose up --build` and confirm the app loads without console errors
+- [x] 5.2 Complete a full login flow end-to-end: unauthenticated state → login redirect → callback → authenticated state with user profile displayed
+- [x] 5.3 Reload the page while authenticated and confirm session is restored via silent renew (refresh token cookie)
+- [x] 5.4 Trigger logout and confirm local state clears and browser redirects to identity provider end-session

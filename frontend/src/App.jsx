@@ -1,11 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from 'react-oidc-context'
 import SignupForm from './SignupForm'
 
 export default function App() {
-  const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect } = useAuth()
+  const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect, signinSilent } = useAuth()
   const [message, setMessage] = useState(null)
   const [health, setHealth] = useState(null)
+  const [restoringSession, setRestoringSession] = useState(false)
+  const sessionRestoreAttempted = useRef(false)
+
+  useEffect(() => {
+    if (isLoading || sessionRestoreAttempted.current) return
+    if (!isAuthenticated) {
+      const hasCookie = document.cookie.split('; ').some(c => c.startsWith('oidc_rt='))
+      if (hasCookie) {
+        sessionRestoreAttempted.current = true
+        setRestoringSession(true)
+        signinSilent().finally(() => setRestoringSession(false))
+      }
+    }
+  }, [isLoading, isAuthenticated, signinSilent])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -20,7 +34,7 @@ export default function App() {
       .catch(() => setHealth('unavailable'))
   }, [isAuthenticated])
 
-  if (isLoading) {
+  if (isLoading || restoringSession) {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
         <p>Loading...</p>
