@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS ride_requests (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id      UUID NOT NULL UNIQUE,
@@ -11,3 +12,6 @@ CREATE TABLE IF NOT EXISTS ride_requests (
     requested_at    TIMESTAMPTZ NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS ride_requests;
