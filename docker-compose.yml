@@ -24,16 +24,26 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
 
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend/src:/app/src
       - /app/node_modules
     depends_on:
       - backend
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: rebuild
+          path: ./frontend/package.json
 
   keycloak-postgres:
     image: postgres:17-alpine
