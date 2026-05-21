@@ -1,10 +1,10 @@
 import { useState } from 'react'
+import { useAuth } from 'react-oidc-context'
 
-const EMPTY = { first_name: '', last_name: '', email: '', date_of_birth: '', weight: '', gender: '' }
-
-export default function SignupForm() {
-  const [fields, setFields] = useState(EMPTY)
-  const [status, setStatus] = useState(null) // { type: 'success' | 'error', message: string }
+export default function ProfileCompletionForm({ onComplete }) {
+  const { user } = useAuth()
+  const [fields, setFields] = useState({ date_of_birth: '', weight: '', gender: '' })
+  const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
 
   function handleChange(e) {
@@ -16,7 +16,15 @@ export default function SignupForm() {
     setLoading(true)
     setStatus(null)
 
-    const body = { ...fields, weight: Number(fields.weight) }
+    const body = {
+      auth_subject: user.profile.sub,
+      first_name:   user.profile.given_name  ?? '',
+      last_name:    user.profile.family_name ?? '',
+      email:        user.profile.email       ?? '',
+      date_of_birth: fields.date_of_birth,
+      weight:        Number(fields.weight),
+      gender:        fields.gender,
+    }
 
     try {
       const res = await fetch('/api/v1/users', {
@@ -27,10 +35,9 @@ export default function SignupForm() {
 
       const data = await res.json()
 
-      if (res.status === 201) {
-        setStatus({ type: 'success', message: 'Account created!' })
-        setFields(EMPTY)
-      } else if (res.status === 400 || res.status === 409) {
+      if (res.status === 201 || res.status === 200) {
+        onComplete()
+      } else if (res.status === 400) {
         setStatus({ type: 'error', message: data.error })
       } else {
         setStatus({ type: 'error', message: 'Something went wrong. Please try again.' })
@@ -44,22 +51,8 @@ export default function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit} style={styles.form}>
-      <h2>Create account</h2>
-
-      <label style={styles.label}>
-        First name
-        <input name="first_name" value={fields.first_name} onChange={handleChange} style={styles.input} />
-      </label>
-
-      <label style={styles.label}>
-        Last name
-        <input name="last_name" value={fields.last_name} onChange={handleChange} style={styles.input} />
-      </label>
-
-      <label style={styles.label}>
-        Email
-        <input name="email" type="email" value={fields.email} onChange={handleChange} style={styles.input} />
-      </label>
+      <h2>Complete your profile</h2>
+      <p style={styles.hint}>A few more details before you get started.</p>
 
       <label style={styles.label}>
         Date of birth
@@ -82,23 +75,21 @@ export default function SignupForm() {
       </label>
 
       {status && (
-        <p style={status.type === 'success' ? styles.success : styles.error}>
-          {status.message}
-        </p>
+        <p style={styles.error}>{status.message}</p>
       )}
 
       <button type="submit" disabled={loading} style={styles.button}>
-        {loading ? 'Submitting…' : 'Sign up'}
+        {loading ? 'Saving…' : 'Continue'}
       </button>
     </form>
   )
 }
 
 const styles = {
-  form: { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 },
-  label: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14 },
-  input: { padding: '6px 8px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' },
+  form:   { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 },
+  hint:   { color: '#555', fontSize: 14, margin: 0 },
+  label:  { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14 },
+  input:  { padding: '6px 8px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' },
   button: { marginTop: 8, padding: '8px 16px', fontSize: 14, cursor: 'pointer' },
-  success: { color: '#2d6a4f', background: '#d8f3dc', padding: '8px 12px', borderRadius: 4, margin: 0 },
-  error: { color: '#9b2226', background: '#ffddd2', padding: '8px 12px', borderRadius: 4, margin: 0 },
+  error:  { color: '#9b2226', background: '#ffddd2', padding: '8px 12px', borderRadius: 4, margin: 0 },
 }

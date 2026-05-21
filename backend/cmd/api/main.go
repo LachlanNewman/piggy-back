@@ -52,7 +52,9 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Hello from Go!"})
 	})
 
-	mux.HandleFunc("/api/v1/users", handlers.CreateUser(db.NewDB(pool)))
+	userDB := db.NewDB(pool)
+	mux.HandleFunc("/api/v1/users", handlers.CreateUser(userDB))
+	mux.HandleFunc("/api/v1/users/me", handlers.GetUserMe(userDB))
 
 	log.Println("backend listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", cors(mux)))

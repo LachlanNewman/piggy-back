@@ -15,16 +15,17 @@ import (
 )
 
 type userRepository interface {
-	CreateUser(ctx context.Context, p db.CreateUserParams) (int, error)
+	CreateUser(ctx context.Context, p db.CreateUserParams) (int, bool, error)
 }
 
 type createUserRequest struct {
-	FirstName   string  `json:"first_name"   validate:"required"`
-	LastName    string  `json:"last_name"    validate:"required"`
-	Email       string  `json:"email"        validate:"required,email"`
+	AuthSubject string  `json:"auth_subject"  validate:"required"`
+	FirstName   string  `json:"first_name"    validate:"required"`
+	LastName    string  `json:"last_name"     validate:"required"`
+	Email       string  `json:"email"         validate:"required,email"`
 	DateOfBirth string  `json:"date_of_birth" validate:"required,datetime=2006-01-02"`
-	Weight      float64 `json:"weight"       validate:"gt=0"`
-	Gender      string  `json:"gender"       validate:"required,oneof=male female unknown"`
+	Weight      float64 `json:"weight"        validate:"gt=0"`
+	Gender      string  `json:"gender"        validate:"required,oneof=male female unknown"`
 }
 
 type createUserResponse struct {
@@ -42,10 +43,6 @@ var validate = func() *validator.Validate {
 	})
 	return v
 }()
-
-func jsonFieldName(fe validator.FieldError) string {
-	return fe.Field()
-}
 
 func CreateUser(repo userRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +69,8 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 
 		dob, _ := time.Parse("2006-01-02", req.DateOfBirth)
 
-		id, err := repo.CreateUser(r.Context(), db.CreateUserParams{
+		id, created, err := repo.CreateUser(r.Context(), db.CreateUserParams{
+			AuthSubject: req.AuthSubject,
 			FirstName:   req.FirstName,
 			LastName:    req.LastName,
 			Email:       req.Email,
@@ -81,16 +79,16 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 			Gender:      req.Gender,
 		})
 		if err != nil {
-			if errors.Is(err, db.ErrDuplicateEmail) {
-				writeError(w, http.StatusConflict, "email already registered")
-				return
-			}
 			writeError(w, http.StatusInternalServerError, "could not create user")
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		if created {
+			w.WriteHeader(http.StatusCreated)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 		json.NewEncoder(w).Encode(createUserResponse{ID: id})
 	}
 }

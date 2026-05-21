@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from 'react-oidc-context'
-import SignupForm from './SignupForm'
+import ProfileCompletionForm from './ProfileCompletionForm'
 
 export default function App() {
   const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect, signinSilent } = useAuth()
@@ -8,6 +8,7 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [restoringSession, setRestoringSession] = useState(false)
   const sessionRestoreAttempted = useRef(false)
+  const [profileStatus, setProfileStatus] = useState('idle') // 'idle' | 'loading' | 'incomplete' | 'complete'
 
   useEffect(() => {
     if (isLoading || sessionRestoreAttempted.current) return
@@ -22,7 +23,20 @@ export default function App() {
   }, [isLoading, isAuthenticated, signinSilent])
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || isLoading || restoringSession) return
+    setProfileStatus('loading')
+    fetch(`/api/v1/users/me?sub=${encodeURIComponent(user.profile.sub)}`)
+      .then(r => {
+        if (r.status === 404) return { profile_complete: false }
+        if (!r.ok) throw new Error('profile check failed')
+        return r.json()
+      })
+      .then(data => setProfileStatus(data.profile_complete ? 'complete' : 'incomplete'))
+      .catch(() => setProfileStatus('incomplete'))
+  }, [isAuthenticated, isLoading, restoringSession, user])
+
+  useEffect(() => {
+    if (profileStatus !== 'complete') return
     fetch('/api/hello')
       .then(r => r.json())
       .then(d => setMessage(d.message))
@@ -32,9 +46,21 @@ export default function App() {
       .then(r => r.json())
       .then(d => setHealth(d.status))
       .catch(() => setHealth('unavailable'))
-  }, [isAuthenticated])
+  }, [profileStatus])
 
-  if (isLoading || restoringSession) {
+  function handleProfileComplete() {
+    setProfileStatus('loading')
+    fetch(`/api/v1/users/me?sub=${encodeURIComponent(user.profile.sub)}`)
+      .then(r => {
+        if (r.status === 404) return { profile_complete: false }
+        if (!r.ok) throw new Error('profile check failed')
+        return r.json()
+      })
+      .then(data => setProfileStatus(data.profile_complete ? 'complete' : 'incomplete'))
+      .catch(() => setProfileStatus('incomplete'))
+  }
+
+  if (isLoading || restoringSession || (isAuthenticated && profileStatus === 'loading')) {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
         <p>Loading...</p>
@@ -52,6 +78,14 @@ export default function App() {
     )
   }
 
+  if (profileStatus === 'incomplete') {
+    return (
+      <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
+        <ProfileCompletionForm onComplete={handleProfileComplete} />
+      </div>
+    )
+  }
+
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -61,8 +95,6 @@ export default function App() {
       <p>Logged in as <strong>{user.profile?.email ?? user.profile?.sub}</strong></p>
       <p>Message: <strong>{message ?? '...'}</strong></p>
       <p>Health: <strong>{health ?? '...'}</strong></p>
-      <hr style={{ margin: '32px 0' }} />
-      <SignupForm />
     </div>
   )
 }
