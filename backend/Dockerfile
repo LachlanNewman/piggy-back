@@ -3,7 +3,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o server .
+ARG CMD=cmd/api
+RUN go build -o server ./$CMD
 
 FROM alpine:latest
 WORKDIR /app

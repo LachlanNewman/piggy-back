@@ -24,10 +24,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     develop:
       watch:
         - action: rebuild
           path: ./backend
+
+  worker:
+    build:
+      context: ./backend
+      args:
+        CMD: cmd/worker
+    environment:
+      DATABASE_URL: postgres://piggyback:piggyback@postgres:5432/piggyback
+      RABBITMQ_URL: amqp://piggyback:piggyback@rabbitmq:5672/
+    depends_on:
+      backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -56,6 +75,20 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak"]
       interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: piggyback
+      RABBITMQ_DEFAULT_PASS: piggyback
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
       timeout: 5s
       retries: 5
 

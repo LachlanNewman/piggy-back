@@ -10,7 +10,10 @@ import (
 )
 
 //go:embed migrations/001_create_users.sql
-var migrationSQL string
+var migration001 string
+
+//go:embed migrations/002_create_ride_requests.sql
+var migration002 string
 
 func New(ctx context.Context) (*pgxpool.Pool, error) {
 	url := os.Getenv("DATABASE_URL")
@@ -27,8 +30,10 @@ func New(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	if _, err := pool.Exec(ctx, migrationSQL); err != nil {
-		return nil, fmt.Errorf("run migration: %w", err)
+	for _, m := range []string{migration001, migration002} {
+		if _, err := pool.Exec(ctx, m); err != nil {
+			return nil, fmt.Errorf("run migration: %w", err)
+		}
 	}
 
 	return pool, nil
