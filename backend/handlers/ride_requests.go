@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -69,6 +70,7 @@ func CreateRideRequest(repo rideRequestRepository, ttl time.Duration) http.Handl
 
 		has, err := repo.HasActivePendingRequest(r.Context(), sub)
 		if err != nil {
+			slog.Error("check active request failed", "rider", sub, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not create ride request")
 			return
 		}
@@ -85,10 +87,12 @@ func CreateRideRequest(repo rideRequestRepository, ttl time.Duration) http.Handl
 			ExpiresAt:      time.Now().Add(ttl),
 		})
 		if err != nil {
+			slog.Error("create ride request failed", "rider", sub, "driver", body.DriverID, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not create ride request")
 			return
 		}
 
+		slog.Info("ride request created", "id", id, "rider", sub, "driver", body.DriverID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(createRideRequestResponse{ID: id})
@@ -114,6 +118,7 @@ func GetRideRequest(repo rideRequestRepository) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "not found")
 				return
 			}
+			slog.Error("get ride request failed", "id", id, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not get ride request")
 			return
 		}

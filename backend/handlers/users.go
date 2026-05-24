@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strings"
@@ -79,10 +80,12 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 			Gender:      req.Gender,
 		})
 		if err != nil {
+			slog.Error("create user failed", "sub", req.AuthSubject, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not create user")
 			return
 		}
 
+		slog.Info("user upserted", "sub", req.AuthSubject, "id", id, "created", created)
 		w.Header().Set("Content-Type", "application/json")
 		if created {
 			w.WriteHeader(http.StatusCreated)

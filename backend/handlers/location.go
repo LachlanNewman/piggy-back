@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -44,10 +45,12 @@ func PushLocation(repo locationRepository) http.HandlerFunc {
 		}
 
 		if err := repo.UpsertUserLocation(r.Context(), sub, *body.Lat, *body.Lng); err != nil {
+			slog.Error("upsert location failed", "sub", sub, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not update location")
 			return
 		}
 
+		slog.Info("location updated", "sub", sub, "lat", *body.Lat, "lng", *body.Lng)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

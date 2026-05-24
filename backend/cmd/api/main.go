@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -13,6 +14,25 @@ import (
 
 	"github.com/caarlos0/env/v11"
 )
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		slog.Info("http", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
+	})
+}
 
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,5 +91,5 @@ func main() {
 	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB))
 
 	log.Println("backend listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", cors(mux)))
+	log.Fatal(http.ListenAndServe(":8080", requestLogger(cors(mux))))
 }

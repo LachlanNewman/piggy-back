@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -53,10 +54,12 @@ func GetNearbyUsers(repo nearbyUserRepository, radiusKm float64, staleThreshold 
 
 		nearby, err := repo.GetNearbyUsers(r.Context(), sub, lat, lng, radiusKm, staleThreshold)
 		if err != nil {
+			slog.Error("get nearby users failed", "sub", sub, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not fetch nearby users")
 			return
 		}
 
+		slog.Info("nearby users fetched", "sub", sub, "count", len(nearby))
 		resp := make([]nearbyUserResponse, len(nearby))
 		for i, u := range nearby {
 			resp[i] = nearbyUserResponse{ID: u.ID, AuthSubject: u.AuthSubject, FirstName: u.FirstName, LastName: u.LastName}

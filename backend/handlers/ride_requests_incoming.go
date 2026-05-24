@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -45,6 +46,7 @@ func GetIncomingRequests(repo incomingRideRequestRepository) http.HandlerFunc {
 
 		requests, err := repo.GetIncomingRequests(r.Context(), sub)
 		if err != nil {
+			slog.Error("get incoming requests failed", "driver", sub, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not fetch incoming requests")
 			return
 		}
@@ -119,10 +121,12 @@ func rideRequestAction(repo rideRequestActionRepository, newStatus, alreadyMsg s
 		}
 
 		if err := repo.SetRideRequestStatus(r.Context(), id, newStatus); err != nil {
+			slog.Error("set ride request status failed", "id", id, "status", newStatus, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not update ride request")
 			return
 		}
 
+		slog.Info("ride request "+newStatus, "id", id, "driver", sub)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"id": id})
 	}
