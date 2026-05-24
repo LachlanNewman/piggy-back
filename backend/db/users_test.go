@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -146,5 +147,93 @@ func TestDB_GetUserBySubject_DBError(t *testing.T) {
 	}
 	if errors.Is(err, ErrNotFound) {
 		t.Errorf("expected generic error, got ErrNotFound")
+	}
+}
+
+func TestDB_UpsertUserLocation_Success(t *testing.T) {
+	store := newTestDB(&mockRow{
+		scanFn: func(dest ...any) error {
+			*dest[0].(*string) = "auth0|abc"
+			return nil
+		},
+	})
+	err := store.UpsertUserLocation(context.Background(), "auth0|abc", -33.8688, 151.2093)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDB_UpsertUserLocation_DBError(t *testing.T) {
+	store := newTestDB(&mockRow{err: errors.New("connection refused")})
+	err := store.UpsertUserLocation(context.Background(), "auth0|abc", -33.8688, 151.2093)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDB_GetUserLocation_Found(t *testing.T) {
+	store := newTestDB(&mockRow{
+		scanFn: func(dest ...any) error {
+			*dest[0].(*float64) = -33.8688
+			*dest[1].(*float64) = 151.2093
+			return nil
+		},
+	})
+	lat, lng, err := store.GetUserLocation(context.Background(), "auth0|abc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if lat != -33.8688 || lng != 151.2093 {
+		t.Errorf("unexpected lat/lng: %f, %f", lat, lng)
+	}
+}
+
+func TestDB_GetUserLocation_NotFound(t *testing.T) {
+	store := newTestDB(&mockRow{err: pgx.ErrNoRows})
+	_, _, err := store.GetUserLocation(context.Background(), "auth0|unknown")
+	if !errors.Is(err, ErrLocationNotFound) {
+		t.Errorf("expected ErrLocationNotFound, got %v", err)
+	}
+}
+
+func TestDB_GetNearbyUsers_HasResults(t *testing.T) {
+	want := []NearbyUser{{ID: 2, FirstName: "Alice", LastName: "Smith"}}
+	raw, _ := json.Marshal([]nearbyUserJSON{{ID: 2, FirstName: "Alice", LastName: "Smith"}})
+	store := newTestDB(&mockRow{
+		scanFn: func(dest ...any) error {
+			*dest[0].(*json.RawMessage) = raw
+			return nil
+		},
+	})
+	got, err := store.GetNearbyUsers(context.Background(), "auth0|abc", -33.8688, 151.2093, 5, 60*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Errorf("expected %+v, got %+v", want, got)
+	}
+}
+
+func TestDB_GetNearbyUsers_Empty(t *testing.T) {
+	store := newTestDB(&mockRow{
+		scanFn: func(dest ...any) error {
+			*dest[0].(*json.RawMessage) = json.RawMessage("[]")
+			return nil
+		},
+	})
+	got, err := store.GetNearbyUsers(context.Background(), "auth0|abc", -33.8688, 151.2093, 5, 60*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %+v", got)
+	}
+}
+
+func TestDB_GetNearbyUsers_DBError(t *testing.T) {
+	store := newTestDB(&mockRow{err: errors.New("connection refused")})
+	_, err := store.GetNearbyUsers(context.Background(), "auth0|abc", 0, 0, 5, 60*time.Second)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }

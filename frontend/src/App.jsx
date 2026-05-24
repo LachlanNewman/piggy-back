@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from 'react-oidc-context'
 import ProfileCompletionForm from './ProfileCompletionForm'
+import NearbyUsersList from './NearbyUsersList'
 import RideRequestForm from './RideRequestForm'
+import IncomingRequests from './IncomingRequests'
+
+const POLL_INTERVAL_MS = 30_000
 
 export default function App() {
   const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect, signinSilent } = useAuth()
-  const [message, setMessage] = useState(null)
-  const [health, setHealth] = useState(null)
   const [restoringSession, setRestoringSession] = useState(false)
   const sessionRestoreAttempted = useRef(false)
   const [profileStatus, setProfileStatus] = useState('idle') // 'idle' | 'loading' | 'incomplete' | 'complete'
+  const [locationDenied, setLocationDenied] = useState(false)
+  const [selectedDriver, setSelectedDriver] = useState(null) // { sub, name }
 
   useEffect(() => {
     if (isLoading || sessionRestoreAttempted.current) return
@@ -36,18 +40,28 @@ export default function App() {
       .catch(() => setProfileStatus('incomplete'))
   }, [isAuthenticated, isLoading, restoringSession, user])
 
+  // Location polling — runs while authenticated and profile complete
   useEffect(() => {
-    if (profileStatus !== 'complete') return
-    fetch('/api/hello')
-      .then(r => r.json())
-      .then(d => setMessage(d.message))
-      .catch(() => setMessage('could not reach backend'))
+    if (!isAuthenticated || profileStatus !== 'complete') return
+    if (!navigator.geolocation) return
 
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(d => setHealth(d.status))
-      .catch(() => setHealth('unavailable'))
-  }, [profileStatus])
+    function pushLocation() {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          fetch(`/api/v1/location?sub=${encodeURIComponent(user.profile.sub)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          }).catch(() => {})
+        },
+        () => setLocationDenied(true)
+      )
+    }
+
+    pushLocation()
+    const interval = setInterval(pushLocation, POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [isAuthenticated, profileStatus, user])
 
   function handleProfileComplete() {
     setProfileStatus('loading')
@@ -72,7 +86,7 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
-        <h1>React + Go</h1>
+        <h1>Piggy Back</h1>
         <p>Please log in to continue.</p>
         <button onClick={signinRedirect}>Log in</button>
       </div>
@@ -90,14 +104,35 @@ export default function App() {
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>React + Go</h1>
+        <h1>Piggy Back</h1>
         <button onClick={signoutRedirect}>Log out</button>
       </div>
       <p>Logged in as <strong>{user.profile?.email ?? user.profile?.sub}</strong></p>
-      <p>Message: <strong>{message ?? '...'}</strong></p>
-      <p>Health: <strong>{health ?? '...'}</strong></p>
+
+      {locationDenied && (
+        <p style={{ color: '#888', fontSize: 13 }}>
+          Location permission denied. Enable it in your browser to find nearby users.
+        </p>
+      )}
+
+      <IncomingRequests sub={user.profile.sub} pollIntervalMs={POLL_INTERVAL_MS} />
+
       <hr />
-      <RideRequestForm sub={user.profile.sub} />
+
+      {selectedDriver ? (
+        <RideRequestForm
+          sub={user.profile.sub}
+          driverID={selectedDriver.sub}
+          driverName={selectedDriver.name}
+          pollIntervalMs={POLL_INTERVAL_MS}
+          onCancel={() => setSelectedDriver(null)}
+        />
+      ) : (
+        <NearbyUsersList
+          sub={user.profile.sub}
+          onRequestRide={driver => setSelectedDriver(driver)}
+        />
+      )}
     </div>
   )
 }

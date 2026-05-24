@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 
-export default function RideRequestForm({ sub }) {
+export default function RideRequestForm({ sub, driverID, driverName, pollIntervalMs, onCancel }) {
   const [pickup, setPickup] = useState('')
   const [dropoff, setDropoff] = useState('')
   const [error, setError] = useState(null)
   const [requestId, setRequestId] = useState(null)
-  const [accepted, setAccepted] = useState(false)
+  const [status, setStatus] = useState(null) // null | 'accepted' | 'declined' | 'expired'
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -14,15 +14,15 @@ export default function RideRequestForm({ sub }) {
       fetch(`/api/v1/ride-requests/${requestId}`)
         .then(r => r.json())
         .then(data => {
-          if (data.status === 'accepted') {
-            setAccepted(true)
+          if (['accepted', 'declined', 'expired'].includes(data.status)) {
+            setStatus(data.status)
             clearInterval(intervalRef.current)
           }
         })
         .catch(() => {})
-    }, 3000)
+    }, pollIntervalMs)
     return () => clearInterval(intervalRef.current)
-  }, [requestId])
+  }, [requestId, pollIntervalMs])
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -38,27 +38,61 @@ export default function RideRequestForm({ sub }) {
     fetch(`/api/v1/ride-requests?sub=${encodeURIComponent(sub)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pickup_address: pickup, dropoff_address: dropoff }),
+      body: JSON.stringify({ pickup_address: pickup, dropoff_address: dropoff, driver_id: driverID }),
     })
       .then(r => {
+        if (r.status === 409) {
+          setError('You already have an active request. Wait for it to expire before requesting again.')
+          return null
+        }
         if (!r.ok) throw new Error('request failed')
         return r.json()
       })
-      .then(data => setRequestId(data.id))
+      .then(data => {
+        if (data) setRequestId(data.id)
+      })
       .catch(() => setError('Failed to submit request. Please try again.'))
   }
 
-  if (accepted) {
-    return <p>Your driver is on the way!</p>
+  if (status === 'accepted') {
+    return (
+      <div>
+        <p style={{ color: 'green' }}>Your driver is on the way!</p>
+        <button onClick={onCancel}>Back</button>
+      </div>
+    )
+  }
+
+  if (status === 'declined') {
+    return (
+      <div>
+        <p>Your request was declined. Try another nearby user.</p>
+        <button onClick={onCancel}>Back</button>
+      </div>
+    )
+  }
+
+  if (status === 'expired') {
+    return (
+      <div>
+        <p>Your request timed out. Try again.</p>
+        <button onClick={onCancel}>Back</button>
+      </div>
+    )
   }
 
   if (requestId) {
-    return <p>Waiting for a driver...</p>
+    return (
+      <div>
+        <p>Waiting for {driverName ?? 'driver'} to respond...</p>
+        <button onClick={onCancel} style={{ marginTop: 8 }}>Cancel</button>
+      </div>
+    )
   }
 
   return (
     <form onSubmit={handleSubmit}>
-      <h2>Request a Ride</h2>
+      <h2>Request a Ride from {driverName ?? 'driver'}</h2>
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <div>
         <label>
@@ -82,7 +116,10 @@ export default function RideRequestForm({ sub }) {
           />
         </label>
       </div>
-      <button type="submit" style={{ marginTop: 12 }}>Request Ride</button>
+      <div style={{ marginTop: 12 }}>
+        <button type="submit">Request Ride</button>
+        <button type="button" onClick={onCancel} style={{ marginLeft: 8 }}>Cancel</button>
+      </div>
     </form>
   )
 }
