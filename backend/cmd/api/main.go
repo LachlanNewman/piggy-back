@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
@@ -18,6 +19,7 @@ import (
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	body   bytes.Buffer
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
@@ -25,12 +27,22 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	r.body.Write(b)
+	return r.ResponseWriter.Write(b)
+}
+
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		slog.Info("http", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
+		ms := time.Since(start).Milliseconds()
+		if rec.status >= 400 && rec.status < 500 {
+			slog.Warn("bad request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", ms, "response", rec.body.String())
+		} else {
+			slog.Info("http", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", ms)
+		}
 	})
 }
 
