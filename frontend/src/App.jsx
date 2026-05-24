@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from 'react-oidc-context'
 import ProfileCompletionForm from './ProfileCompletionForm'
+import RideRequestForm from './RideRequestForm'
 
 export default function App() {
   const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect, signinSilent } = useAuth()
@@ -95,6 +96,8 @@ export default function App() {
       <p>Logged in as <strong>{user.profile?.email ?? user.profile?.sub}</strong></p>
       <p>Message: <strong>{message ?? '...'}</strong></p>
       <p>Health: <strong>{health ?? '...'}</strong></p>
+      <hr />
+      <RideRequestForm sub={user.profile.sub} />
     </div>
   )
 }

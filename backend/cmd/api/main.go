@@ -55,6 +55,8 @@ func main() {
 	userDB := db.NewDB(pool)
 	mux.HandleFunc("/api/v1/users", handlers.CreateUser(userDB))
 	mux.HandleFunc("/api/v1/users/me", handlers.GetUserMe(userDB))
+	mux.HandleFunc("/api/v1/ride-requests", handlers.CreateRideRequest(userDB))
+	mux.HandleFunc("/api/v1/ride-requests/{id}", handlers.GetRideRequest(userDB))
 
 	log.Println("backend listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", cors(mux)))
