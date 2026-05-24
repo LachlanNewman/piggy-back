@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { backendClient } from './api/client'
 
 export default function IncomingRequests({ sub, pollIntervalMs }) {
   const [requests, setRequests] = useState([])
   const intervalRef = useRef(null)
 
   function fetchIncoming() {
-    fetch(`/api/v1/ride-requests/incoming?sub=${encodeURIComponent(sub)}`)
-      .then(r => r.ok ? r.json() : [])
+    backendClient.getIncomingRequests(sub)
       .then(data => setRequests(Array.isArray(data) ? data : []))
       .catch(() => {})
   }
@@ -18,13 +18,13 @@ export default function IncomingRequests({ sub, pollIntervalMs }) {
   }, [sub, pollIntervalMs])
 
   function handleAccept(id) {
-    fetch(`/api/v1/ride-requests/${id}/accept?sub=${encodeURIComponent(sub)}`, { method: 'PATCH' })
+    backendClient.acceptRideRequest(id, sub)
       .then(() => setRequests(prev => prev.filter(r => r.id !== id)))
       .catch(() => {})
   }
 
   function handleDecline(id) {
-    fetch(`/api/v1/ride-requests/${id}/decline?sub=${encodeURIComponent(sub)}`, { method: 'PATCH' })
+    backendClient.declineRideRequest(id, sub)
       .then(() => setRequests(prev => prev.filter(r => r.id !== id)))
       .catch(() => {})
   }

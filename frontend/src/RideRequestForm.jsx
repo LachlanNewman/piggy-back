@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { backendClient, ApiError } from './api/client'
 
 export default function RideRequestForm({ sub, driverID, driverName, pollIntervalMs, onCancel }) {
   const [pickup, setPickup] = useState('')
@@ -11,8 +12,7 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
   useEffect(() => {
     if (!requestId) return
     intervalRef.current = setInterval(() => {
-      fetch(`/api/v1/ride-requests/${requestId}`)
-        .then(r => r.json())
+      backendClient.getRideRequest(requestId)
         .then(data => {
           if (['accepted', 'declined', 'expired'].includes(data.status)) {
             setStatus(data.status)
@@ -35,23 +35,15 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
       return
     }
     setError(null)
-    fetch(`/api/v1/ride-requests?sub=${encodeURIComponent(sub)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pickup_address: pickup, dropoff_address: dropoff, driver_id: driverID }),
-    })
-      .then(r => {
-        if (r.status === 409) {
+    backendClient.createRideRequest(sub, { pickupAddress: pickup, dropoffAddress: dropoff, driverID })
+      .then(data => setRequestId(data.id))
+      .catch(err => {
+        if (err instanceof ApiError && err.status === 409) {
           setError('You already have an active request. Wait for it to expire before requesting again.')
-          return null
+        } else {
+          setError('Failed to submit request. Please try again.')
         }
-        if (!r.ok) throw new Error('request failed')
-        return r.json()
       })
-      .then(data => {
-        if (data) setRequestId(data.id)
-      })
-      .catch(() => setError('Failed to submit request. Please try again.'))
   }
 
   if (status === 'accepted') {

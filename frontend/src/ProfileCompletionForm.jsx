@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from 'react-oidc-context'
+import { backendClient, ApiError } from './api/client'
 
 export default function ProfileCompletionForm({ onComplete }) {
   const { user } = useAuth()
@@ -27,23 +28,14 @@ export default function ProfileCompletionForm({ onComplete }) {
     }
 
     try {
-      const res = await fetch('/api/v1/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      const data = await res.json()
-
-      if (res.status === 201 || res.status === 200) {
-        onComplete()
-      } else if (res.status === 400) {
-        setStatus({ type: 'error', message: data.error })
+      await backendClient.createUser(body)
+      onComplete()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400) {
+        setStatus({ type: 'error', message: err.message })
       } else {
         setStatus({ type: 'error', message: 'Something went wrong. Please try again.' })
       }
-    } catch {
-      setStatus({ type: 'error', message: 'Something went wrong. Please try again.' })
     } finally {
       setLoading(false)
     }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { backendClient, ApiError } from './api/client'
 
 export default function NearbyUsersList({ sub, onRequestRide }) {
   const [users, setUsers] = useState(null)
@@ -7,21 +8,9 @@ export default function NearbyUsersList({ sub, onRequestRide }) {
 
   function fetchNearby() {
     setLoading(true)
-    fetch(`/api/v1/users/nearby?sub=${encodeURIComponent(sub)}`)
-      .then(r => {
-        if (r.status === 404) return { noLocation: true }
-        if (!r.ok) throw new Error('fetch failed')
-        return r.json().then(data => ({ users: data }))
-      })
-      .then(result => {
-        if (result.noLocation) {
-          setError('location')
-        } else {
-          setUsers(result.users)
-          setError(null)
-        }
-      })
-      .catch(() => setError('fetch'))
+    backendClient.getNearbyUsers(sub)
+      .then(data => { setUsers(data); setError(null) })
+      .catch(err => setError(err instanceof ApiError && err.status === 404 ? 'location' : 'fetch'))
       .finally(() => setLoading(false))
   }
 

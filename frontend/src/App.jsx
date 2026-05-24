@@ -4,6 +4,7 @@ import ProfileCompletionForm from './ProfileCompletionForm'
 import NearbyUsersList from './NearbyUsersList'
 import RideRequestForm from './RideRequestForm'
 import IncomingRequests from './IncomingRequests'
+import { backendClient } from './api/client'
 
 const POLL_INTERVAL_MS = 30_000
 
@@ -30,13 +31,8 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || isLoading || restoringSession) return
     setProfileStatus('loading')
-    fetch(`/api/v1/users/me?sub=${encodeURIComponent(user.profile.sub)}`)
-      .then(r => {
-        if (r.status === 404) return { profile_complete: false }
-        if (!r.ok) throw new Error('profile check failed')
-        return r.json()
-      })
-      .then(data => setProfileStatus(data.profile_complete ? 'complete' : 'incomplete'))
+    backendClient.getUserMe(user.profile.sub)
+      .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }, [isAuthenticated, isLoading, restoringSession, user])
 
@@ -48,11 +44,7 @@ export default function App() {
     function pushLocation() {
       navigator.geolocation.getCurrentPosition(
         pos => {
-          fetch(`/api/v1/location?sub=${encodeURIComponent(user.profile.sub)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-          }).catch(() => {})
+          backendClient.pushLocation(user.profile.sub, pos.coords.latitude, pos.coords.longitude).catch(() => {})
         },
         () => setLocationDenied(true)
       )
@@ -65,13 +57,8 @@ export default function App() {
 
   function handleProfileComplete() {
     setProfileStatus('loading')
-    fetch(`/api/v1/users/me?sub=${encodeURIComponent(user.profile.sub)}`)
-      .then(r => {
-        if (r.status === 404) return { profile_complete: false }
-        if (!r.ok) throw new Error('profile check failed')
-        return r.json()
-      })
-      .then(data => setProfileStatus(data.profile_complete ? 'complete' : 'incomplete'))
+    backendClient.getUserMe(user.profile.sub)
+      .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }
 
