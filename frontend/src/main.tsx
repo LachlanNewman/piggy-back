@@ -3,10 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from 'react-oidc-context'
 import { SplitTokenStore } from './auth/splitTokenStore'
-import App from './App.jsx'
-import CallbackPage from './pages/CallbackPage.jsx'
+import App from './App'
+import CallbackPage from './pages/CallbackPage'
 
-const required = ['VITE_OIDC_AUTHORITY', 'VITE_OIDC_CLIENT_ID', 'VITE_OIDC_REDIRECT_URI']
+const required = ['VITE_OIDC_AUTHORITY', 'VITE_OIDC_CLIENT_ID', 'VITE_OIDC_REDIRECT_URI'] as const
 for (const key of required) {
   if (!import.meta.env[key]) {
     throw new Error(`Missing required env var: ${key}. Check .env.example for setup instructions.`)
@@ -23,7 +23,9 @@ const oidcConfig = {
   automaticSilentRenew: false,
 }
 
-createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root')!
+
+createRoot(root).render(
   <StrictMode>
     <AuthProvider {...oidcConfig}>
       <BrowserRouter>

@@ -1,9 +1,21 @@
 import { useState, useEffect } from 'react'
-import { backendClient, ApiError } from './api/client'
+import { backendClient, ApiError, NearbyUser } from './api/client'
 
-export default function NearbyUsersList({ sub, onRequestRide }) {
-  const [users, setUsers] = useState(null)
-  const [error, setError] = useState(null)
+interface Driver {
+  sub: string
+  name: string
+}
+
+interface Props {
+  sub: string
+  onRequestRide: (driver: Driver) => void
+}
+
+type ErrorKind = 'location' | 'fetch'
+
+export default function NearbyUsersList({ sub, onRequestRide }: Props) {
+  const [users, setUsers] = useState<NearbyUser[] | null>(null)
+  const [error, setError] = useState<ErrorKind | null>(null)
   const [loading, setLoading] = useState(true)
 
   function fetchNearby() {

@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
 import { backendClient, ApiError } from './api/client'
 
-export default function RideRequestForm({ sub, driverID, driverName, pollIntervalMs, onCancel }) {
+interface Props {
+  sub: string
+  driverID: string
+  driverName: string
+  pollIntervalMs: number
+  onCancel: () => void
+}
+
+type RideStatus = 'accepted' | 'declined' | 'expired'
+
+export default function RideRequestForm({ sub, driverID, driverName, pollIntervalMs, onCancel }: Props) {
   const [pickup, setPickup] = useState('')
   const [dropoff, setDropoff] = useState('')
-  const [error, setError] = useState(null)
-  const [requestId, setRequestId] = useState(null)
-  const [status, setStatus] = useState(null) // null | 'accepted' | 'declined' | 'expired'
-  const intervalRef = useRef(null)
+  const [error, setError] = useState<string | null>(null)
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const [status, setStatus] = useState<RideStatus | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!requestId) return
@@ -15,16 +25,18 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
       backendClient.getRideRequest(requestId)
         .then(data => {
           if (['accepted', 'declined', 'expired'].includes(data.status)) {
-            setStatus(data.status)
-            clearInterval(intervalRef.current)
+            setStatus(data.status as RideStatus)
+            if (intervalRef.current) clearInterval(intervalRef.current)
           }
         })
         .catch(() => {})
     }, pollIntervalMs)
-    return () => clearInterval(intervalRef.current)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
   }, [requestId, pollIntervalMs])
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!pickup.trim()) {
       setError('Pickup address is required')
@@ -76,7 +88,7 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
   if (requestId) {
     return (
       <div>
-        <p>Waiting for {driverName ?? 'driver'} to respond...</p>
+        <p>Waiting for {driverName} to respond...</p>
         <button onClick={onCancel} style={{ marginTop: 8 }}>Cancel</button>
       </div>
     )
@@ -84,7 +96,7 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
 
   return (
     <form onSubmit={handleSubmit}>
-      <h2>Request a Ride from {driverName ?? 'driver'}</h2>
+      <h2>Request a Ride from {driverName}</h2>
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <div>
         <label>

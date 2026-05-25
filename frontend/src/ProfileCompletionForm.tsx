@@ -2,26 +2,41 @@ import { useState } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { backendClient, ApiError } from './api/client'
 
-export default function ProfileCompletionForm({ onComplete }) {
+interface Props {
+  onComplete: () => void
+}
+
+interface Fields {
+  date_of_birth: string
+  weight: string
+  gender: string
+}
+
+interface Status {
+  type: 'error'
+  message: string
+}
+
+export default function ProfileCompletionForm({ onComplete }: Props) {
   const { user } = useAuth()
-  const [fields, setFields] = useState({ date_of_birth: '', weight: '', gender: '' })
-  const [status, setStatus] = useState(null)
+  const [fields, setFields] = useState<Fields>({ date_of_birth: '', weight: '', gender: '' })
+  const [status, setStatus] = useState<Status | null>(null)
   const [loading, setLoading] = useState(false)
 
-  function handleChange(e) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     setFields(f => ({ ...f, [e.target.name]: e.target.value }))
   }
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setStatus(null)
 
     const body = {
-      auth_subject: user.profile.sub,
-      first_name:   user.profile.given_name  ?? '',
-      last_name:    user.profile.family_name ?? '',
-      email:        user.profile.email       ?? '',
+      auth_subject:  user?.profile.sub          ?? '',
+      first_name:    user?.profile.given_name   ?? '',
+      last_name:     user?.profile.family_name  ?? '',
+      email:         user?.profile.email        ?? '',
       date_of_birth: fields.date_of_birth,
       weight:        Number(fields.weight),
       gender:        fields.gender,
@@ -77,7 +92,7 @@ export default function ProfileCompletionForm({ onComplete }) {
   )
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   form:   { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 },
   hint:   { color: '#555', fontSize: 14, margin: 0 },
   label:  { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14 },

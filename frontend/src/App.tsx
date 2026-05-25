@@ -8,13 +8,20 @@ import { backendClient } from './api/client'
 
 const POLL_INTERVAL_MS = 30_000
 
+type ProfileStatus = 'idle' | 'loading' | 'incomplete' | 'complete'
+
+interface Driver {
+  sub: string
+  name: string
+}
+
 export default function App() {
   const { isAuthenticated, isLoading, user, signinRedirect, signoutRedirect, signinSilent } = useAuth()
   const [restoringSession, setRestoringSession] = useState(false)
   const sessionRestoreAttempted = useRef(false)
-  const [profileStatus, setProfileStatus] = useState('idle') // 'idle' | 'loading' | 'incomplete' | 'complete'
+  const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle')
   const [locationDenied, setLocationDenied] = useState(false)
-  const [selectedDriver, setSelectedDriver] = useState(null) // { sub, name }
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null)
 
   useEffect(() => {
     if (isLoading || sessionRestoreAttempted.current) return
@@ -29,22 +36,21 @@ export default function App() {
   }, [isLoading, isAuthenticated, signinSilent])
 
   useEffect(() => {
-    if (!isAuthenticated || isLoading || restoringSession) return
+    if (!isAuthenticated || isLoading || restoringSession || !user) return
     setProfileStatus('loading')
     backendClient.getUserMe(user.profile.sub)
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }, [isAuthenticated, isLoading, restoringSession, user])
 
-  // Location polling — runs while authenticated and profile complete
   useEffect(() => {
-    if (!isAuthenticated || profileStatus !== 'complete') return
+    if (!isAuthenticated || profileStatus !== 'complete' || !user) return
     if (!navigator.geolocation) return
 
     function pushLocation() {
       navigator.geolocation.getCurrentPosition(
         pos => {
-          backendClient.pushLocation(user.profile.sub, pos.coords.latitude, pos.coords.longitude).catch(() => {})
+          backendClient.pushLocation(user!.profile.sub, pos.coords.latitude, pos.coords.longitude).catch(() => {})
         },
         () => setLocationDenied(true)
       )
@@ -56,6 +62,7 @@ export default function App() {
   }, [isAuthenticated, profileStatus, user])
 
   function handleProfileComplete() {
+    if (!user) return
     setProfileStatus('loading')
     backendClient.getUserMe(user.profile.sub)
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
@@ -75,7 +82,7 @@ export default function App() {
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
         <h1>Piggy Back</h1>
         <p>Please log in to continue.</p>
-        <button onClick={signinRedirect}>Log in</button>
+        <button onClick={() => signinRedirect()}>Log in</button>
       </div>
     )
   }
@@ -92,9 +99,9 @@ export default function App() {
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 560, margin: '80px auto', padding: '0 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Piggy Back</h1>
-        <button onClick={signoutRedirect}>Log out</button>
+        <button onClick={() => signoutRedirect()}>Log out</button>
       </div>
-      <p>Logged in as <strong>{user.profile?.email ?? user.profile?.sub}</strong></p>
+      <p>Logged in as <strong>{user?.profile?.email ?? user?.profile?.sub}</strong></p>
 
       {locationDenied && (
         <p style={{ color: '#888', fontSize: 13 }}>
@@ -102,13 +109,13 @@ export default function App() {
         </p>
       )}
 
-      <IncomingRequests sub={user.profile.sub} pollIntervalMs={POLL_INTERVAL_MS} />
+      <IncomingRequests sub={user!.profile.sub} pollIntervalMs={POLL_INTERVAL_MS} />
 
       <hr />
 
       {selectedDriver ? (
         <RideRequestForm
-          sub={user.profile.sub}
+          sub={user!.profile.sub}
           driverID={selectedDriver.sub}
           driverName={selectedDriver.name}
           pollIntervalMs={POLL_INTERVAL_MS}
@@ -116,7 +123,7 @@ export default function App() {
         />
       ) : (
         <NearbyUsersList
-          sub={user.profile.sub}
+          sub={user!.profile.sub}
           onRequestRide={driver => setSelectedDriver(driver)}
         />
       )}
