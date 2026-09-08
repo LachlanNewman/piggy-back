@@ -1,5 +1,7 @@
 node_modules/
-frontend/dist/
+frontend/.next/
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
 .env
 .claude/worktrees/
 .claire/worktrees/

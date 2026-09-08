@@ -1,5 +1,9 @@
 const COOKIE_NAME = 'oidc_rt'
 
+/**
+ * OIDC token store that keeps access/id tokens in memory and the refresh token
+ * in a cookie, so a page reload can silently restore the session.
+ */
 export class SplitTokenStore {
   #map = new Map<string, string>()
 
@@ -45,12 +49,17 @@ export class SplitTokenStore {
   }
 }
 
+export function hasRefreshCookie(): boolean {
+  return readCookie() !== null
+}
+
 function writeCookie(value: string): void {
   const secure = location.protocol === 'https:' ? '; Secure' : ''
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value)}; path=/; SameSite=Strict${secure}`
 }
 
 function readCookie(): string | null {
+  if (typeof document === 'undefined') return null
   const match = document.cookie.split('; ').find(r => r.startsWith(`${COOKIE_NAME}=`))
   return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : null
 }
