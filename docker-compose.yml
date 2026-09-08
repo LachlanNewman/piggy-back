@@ -37,9 +37,12 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "5173:5173"
+      - "3000:3000"
     environment:
-      VITE_BACKEND_URL: http://backend:8080
+      BACKEND_URL: http://backend:8080
+      NEXT_PUBLIC_OIDC_AUTHORITY: http://localhost:8180/realms/piggyback
+      NEXT_PUBLIC_OIDC_CLIENT_ID: piggyback-frontend
+      NEXT_PUBLIC_OIDC_REDIRECT_URI: http://localhost:3000/callback
     depends_on:
       - backend
     develop:

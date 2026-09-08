@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Stack
 
-Full-stack web app: React 18 + Vite (frontend), Go 1.23 standard library (backend), PostgreSQL 17 with pgx/v5, Keycloak 26 (OIDC auth).
+Full-stack web app: Next.js 16 (App Router) + React 19 (frontend), Go 1.23 standard library (backend), PostgreSQL 17 with pgx/v5, Keycloak 26 (OIDC auth).
+
+The product is a piggyback rideshare: every signed-in user is both a rider and a carrier. Riders find people nearby with a free back, send a pickup/drop-off request, and the carrier accepts or declines.
 
 ## Commands
 
@@ -17,12 +19,13 @@ docker compose watch        # Start with live reload (backend rebuild on change,
 
 ### Frontend (`frontend/`)
 ```bash
-npm run dev      # Vite dev server on port 5173
-npm run build    # Production build
-npm run preview  # Preview production build
+npm run dev        # Next dev server on port 3000
+npm run build      # Production build
+npm run start      # Serve the production build
+npm run typecheck  # tsc --noEmit
 ```
 
-Requires a `frontend/.env` file — see `frontend/.env.example` for required vars (`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID`, `VITE_OIDC_REDIRECT_URI`).
+Requires a `frontend/.env.local` file — see `frontend/.env.example` for required vars (`NEXT_PUBLIC_OIDC_AUTHORITY`, `NEXT_PUBLIC_OIDC_CLIENT_ID`, `NEXT_PUBLIC_OIDC_REDIRECT_URI`, `BACKEND_URL`).
 
 ### Backend (`backend/`)
 ```bash
@@ -37,14 +40,16 @@ go test ./...      # Run all tests (unit tests mock the DB; no DATABASE_URL requ
 |-------------------|------|-------------------------------------|
 | postgres          | 5432 | App database                        |
 | backend           | 8080 | Go HTTP API                         |
-| frontend          | 5173 | Vite dev server                     |
+| frontend          | 3000 | Next.js dev server                  |
 | keycloak-postgres | —    | Keycloak's own database (internal)  |
 | keycloak          | 8180 | OIDC identity provider              |
 
 ### Request flow
-Frontend (React) → `/api/*` → Backend (Go HTTP) → PostgreSQL (pgx pool)
+Browser → Next.js (rewrites `/api/:path*` to `BACKEND_URL`) → Backend (Go HTTP) → PostgreSQL (pgx pool)
 
-Auth flow: Frontend → Keycloak (OIDC code flow, port 8180) → tokens stored via `SplitTokenStore` (cookie + sessionStorage split) → `react-oidc-context` provides auth state.
+The Next app has no API routes of its own; `next.config.ts` rewrites `/api/:path*` to the Go backend so the browser stays same-origin.
+
+Auth flow: Frontend → Keycloak (OIDC code flow, port 8180) → tokens stored via `SplitTokenStore` (refresh token in a cookie, access/id tokens in memory) → `react-oidc-context` provides auth state. Auth is client-only: `app/providers.tsx` mounts `AuthProvider` after hydration because `oidc-client-ts` touches browser storage on construction.
 
 ### Backend (`backend/`)
 Entry point: `cmd/api/main.go` — CORS middleware, route registration, HTTP server on `:8080`.
@@ -69,19 +74,32 @@ No framework (no Gin/Echo/Chi); uses `net/http` only.
 | GET    | `/api/hello`                | inline hello        |
 | POST   | `/api/v1/users`             | CreateUser          |
 | GET    | `/api/v1/users/me`          | GetUserMe           |
+| GET    | `/api/v1/users/nearby`      | GetNearbyUsers      |
+| POST   | `/api/v1/location`          | PushLocation        |
 | POST   | `/api/v1/ride-requests`     | CreateRideRequest   |
+| GET    | `/api/v1/ride-requests/incoming` | GetIncomingRequests |
 | GET    | `/api/v1/ride-requests/{id}`| GetRideRequest      |
+| PATCH  | `/api/v1/ride-requests/{id}/accept`  | AcceptRideRequest  |
+| PATCH  | `/api/v1/ride-requests/{id}/decline` | DeclineRideRequest |
 
 ### Frontend (`frontend/src/`)
-- `main.jsx` — React root; wraps app in `AuthProvider` (react-oidc-context) + `BrowserRouter`; routes `/callback` and `/*`
-- `App.jsx` — auth gate, profile-completion gate, main app UI with `RideRequestForm`
-- `ProfileCompletionForm.jsx` — shown when `profile_complete` is false; POSTs to `/api/v1/users`
-- `RideRequestForm.jsx` — ride request submission form
-- `pages/CallbackPage.jsx` — handles OIDC redirect callback, then navigates to `/`
-- `auth/splitTokenStore.js` — custom OIDC token store: access/id tokens in sessionStorage, refresh token in httpOnly-style cookie
+- `app/layout.tsx` — root layout; metadata, `globals.css`, wraps children in `Providers`
+- `app/providers.tsx` — client component; mounts `AuthProvider` (react-oidc-context) after hydration
+- `app/page.tsx` — client component; auth gate → profile-completion gate → ride app (location push, incoming requests, nearby carriers, ride flow)
+- `app/callback/page.tsx` — OIDC redirect callback, then `router.replace('/')`
+- `app/globals.css` — the design system (tokens, cards, buttons, forms, light/dark)
+- `components/ProfileCompletionForm.tsx` — shown when `profile_complete` is false; POSTs to `/api/v1/users`
+- `components/NearbyCarriers.tsx` — nearby users available to carry; exports the `Carrier` type
+- `components/RideRequestFlow.tsx` — pickup/drop-off form, then polls the request until accepted/declined/expired
+- `components/IncomingRequests.tsx` — polls requests addressed to you; accept/decline
+- `lib/api/client.ts` — typed backend client; zod-validated responses, `ApiError` for non-2xx
+- `lib/auth/splitTokenStore.ts` — custom OIDC token store: access/id tokens in memory, refresh token in a cookie
+- `lib/format.ts` — small display helpers
+
+Routing is the App Router (no react-router). All product UI is client-rendered — the Go backend is the only data source.
 
 ### Auth / profile gate
-After login, `App.jsx` calls `GET /api/v1/users/me?sub=<oidc_sub>`. A 404 or `profile_complete: false` response renders `ProfileCompletionForm` instead of the main UI. On completion, the form POSTs to `POST /api/v1/users` (upsert), then re-checks the profile status.
+After login, `app/page.tsx` calls `GET /api/v1/users/me?sub=<oidc_sub>`. A 404 or `profile_complete: false` response renders `ProfileCompletionForm` instead of the main UI. On completion, the form POSTs to `POST /api/v1/users` (upsert), then re-checks the profile status.
 
 ### Database migrations
 Goose manages migrations via embedded SQL in `db/migrations/`. Migrations run automatically when `db.New()` is called at startup. File naming: `NNN_description.sql`.
