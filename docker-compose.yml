@@ -23,6 +23,7 @@ services:
       DATABASE_URL: postgres://piggyback:piggyback@postgres:5432/piggyback
       OIDC_ISSUER: ${OIDC_ISSUER:?required}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:?required}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy

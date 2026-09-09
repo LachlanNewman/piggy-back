@@ -219,3 +219,60 @@ func TestSubjectFromContext(t *testing.T) {
 		t.Errorf("expected round trip, got %q ok=%v", sub, ok)
 	}
 }
+
+func TestUnverifiedClaims(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	t.Run("audience as a single string", func(t *testing.T) {
+		raw := signToken(t, key, map[string]any{"iss": "https://issuer/", "aud": "https://api.piggyback"})
+		iss, aud, ok := unverifiedClaims(raw)
+		if !ok {
+			t.Fatal("expected the payload to decode")
+		}
+		if iss != "https://issuer/" {
+			t.Errorf("iss = %q", iss)
+		}
+		if len(aud) != 1 || aud[0] != "https://api.piggyback" {
+			t.Errorf("aud = %v", aud)
+		}
+	})
+
+	t.Run("audience as an array", func(t *testing.T) {
+		raw := signToken(t, key, map[string]any{
+			"iss": "https://issuer/",
+			"aud": []string{"https://api.piggyback", "https://issuer/userinfo"},
+		})
+		_, aud, ok := unverifiedClaims(raw)
+		if !ok {
+			t.Fatal("expected the payload to decode")
+		}
+		if len(aud) != 2 || aud[0] != "https://api.piggyback" {
+			t.Errorf("aud = %v", aud)
+		}
+	})
+
+	// An Auth0 opaque access token: not a JWT, so there is nothing to decode.
+	// This is the case the debug log calls out by name.
+	t.Run("opaque token", func(t *testing.T) {
+		for _, raw := range []string{"", "not-a-jwt", "aB3xY9zQ7wE1rT5yU8iO0pL2kJ6hG4fD"} {
+			if _, _, ok := unverifiedClaims(raw); ok {
+				t.Errorf("expected %q not to decode as a JWT", raw)
+			}
+		}
+	})
+
+	t.Run("does not verify the signature", func(t *testing.T) {
+		other, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("generate key: %v", err)
+		}
+		raw := signToken(t, other, map[string]any{"iss": "https://evil/", "aud": "https://spoofed"})
+		_, aud, ok := unverifiedClaims(raw)
+		if !ok || len(aud) != 1 || aud[0] != "https://spoofed" {
+			t.Errorf("expected claims to decode regardless of signer, got %v ok=%v", aud, ok)
+		}
+	})
+}

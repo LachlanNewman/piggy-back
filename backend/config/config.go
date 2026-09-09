@@ -1,6 +1,7 @@
 package config
 
 type Config struct {
+	LogLevel                 string  `env:"LOG_LEVEL" envDefault:"info"`
 	OIDCIssuer               string  `env:"OIDC_ISSUER"`
 	OIDCAudience             string  `env:"OIDC_AUDIENCE"`
 	MaximumWeightDifference  string  `env:"MATCH_MAXIMUM_WEIGHT_DIFFERENCE"`

@@ -64,7 +64,10 @@ Entry point: `cmd/api/main.go` — CORS middleware, route registration, HTTP ser
 Package layout:
 - `cmd/api/main.go` — wires config, DB pool, auth, handlers, and starts server
 - `auth/auth.go` — OIDC discovery + JWKS verification; `Middleware` puts the
-  verified subject in the request context, `SubjectFromContext` reads it back
+  verified subject in the request context, `SubjectFromContext` reads it back.
+  With `LOG_LEVEL=debug` it logs each token's `aud`/`iss` beside what the service
+  expects — the fastest way to diagnose a 401. Those claims are read *without*
+  verifying the signature, so they are for diagnostics only
 - `config/config.go` — env-parsed config struct (uses `caarlos0/env`)
 - `db/db.go` — `New()` creates pgxpool and runs goose migrations on startup; `NewDB()` returns `*DB` querier
 - `db/migrations/` — SQL migration files (goose, embedded at build time)

@@ -12,16 +12,16 @@ import (
 var ErrRideRequestNotFound = errors.New("ride request not found")
 
 type RideRequest struct {
-	ID              string
-	DriverID        string
-	RiderID         string
-	RiderFirstName  string
-	RiderLastName   string
-	Status          string
-	PickupAddress   string
-	DropoffAddress  string
-	RequestedAt     time.Time
-	ExpiresAt       time.Time
+	ID             string
+	DriverID       string
+	RiderID        string
+	RiderFirstName string
+	RiderLastName  string
+	Status         string
+	PickupAddress  string
+	DropoffAddress string
+	RequestedAt    time.Time
+	ExpiresAt      time.Time
 }
 
 type CreateRideRequestParams struct {

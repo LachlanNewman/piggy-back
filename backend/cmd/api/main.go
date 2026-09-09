@@ -69,6 +69,17 @@ func main() {
 		log.Fatalf("%+v", err)
 	}
 
+	var level slog.LevelVar
+	// envDefault only covers an unset var; an empty one would otherwise be a
+	// fatal parse error rather than the default.
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info"
+	}
+	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
+		log.Fatalf("invalid LOG_LEVEL %q (want debug, info, warn or error): %v", cfg.LogLevel, err)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: &level})))
+
 	authn, err := auth.New(ctx, cfg.OIDCIssuer, cfg.OIDCAudience)
 	if err != nil {
 		log.Fatalf("auth init: %v", err)

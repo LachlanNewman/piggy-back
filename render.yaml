@@ -29,6 +29,10 @@ services:
         sync: false
       - key: OIDC_AUDIENCE
         sync: false
+      # Set to "debug" in the Dashboard to log each token's aud/iss against what
+      # this service expects. Defaults to info when unset.
+      - key: LOG_LEVEL
+        sync: false
 
   - type: web
     runtime: static
