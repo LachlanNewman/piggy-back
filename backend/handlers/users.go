@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/auth"
 	"backend/db"
 
 	"github.com/go-playground/validator/v10"
@@ -20,7 +21,6 @@ type userRepository interface {
 }
 
 type createUserRequest struct {
-	AuthSubject string  `json:"auth_subject"  validate:"required"`
 	FirstName   string  `json:"first_name"    validate:"required"`
 	LastName    string  `json:"last_name"     validate:"required"`
 	Email       string  `json:"email"         validate:"required,email"`
@@ -52,6 +52,11 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 			return
 		}
 
+		sub, ok := authenticatedSubject(w, r)
+		if !ok {
+			return
+		}
+
 		var req createUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -71,7 +76,7 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 		dob, _ := time.Parse("2006-01-02", req.DateOfBirth)
 
 		id, created, err := repo.CreateUser(r.Context(), db.CreateUserParams{
-			AuthSubject: req.AuthSubject,
+			AuthSubject: sub,
 			FirstName:   req.FirstName,
 			LastName:    req.LastName,
 			Email:       req.Email,
@@ -80,12 +85,12 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 			Gender:      req.Gender,
 		})
 		if err != nil {
-			slog.Error("create user failed", "sub", req.AuthSubject, "err", err)
+			slog.Error("create user failed", "sub", sub, "err", err)
 			writeError(w, http.StatusInternalServerError, "could not create user")
 			return
 		}
 
-		slog.Info("user upserted", "sub", req.AuthSubject, "id", id, "created", created)
+		slog.Info("user upserted", "sub", sub, "id", id, "created", created)
 		w.Header().Set("Content-Type", "application/json")
 		if created {
 			w.WriteHeader(http.StatusCreated)
@@ -94,6 +99,18 @@ func CreateUser(repo userRepository) http.HandlerFunc {
 		}
 		json.NewEncoder(w).Encode(createUserResponse{ID: id})
 	}
+}
+
+// authenticatedSubject returns the subject proven by the bearer token. A false
+// result means the route was registered without the auth middleware; it writes
+// a 401 so a misconfigured route fails closed rather than leaking data.
+func authenticatedSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
+	sub, ok := auth.SubjectFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return "", false
+	}
+	return sub, true
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

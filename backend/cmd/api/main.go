@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"backend/auth"
 	"backend/config"
 	"backend/db"
 	"backend/handlers"
@@ -51,7 +52,7 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -66,6 +67,11 @@ func main() {
 	cfg := config.Config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("%+v", err)
+	}
+
+	authn, err := auth.New(ctx, cfg.OIDCIssuer, cfg.OIDCAudience)
+	if err != nil {
+		log.Fatalf("auth init: %v", err)
 	}
 
 	pool, err := db.New(ctx)
@@ -91,17 +97,23 @@ func main() {
 	ttl := time.Duration(cfg.RideRequestTTLMinutes) * time.Minute
 	staleThreshold := time.Duration(cfg.LocationPollIntervalSecs*2) * time.Second
 
-	mux.HandleFunc("/api/v1/users", handlers.CreateUser(userDB))
-	mux.HandleFunc("/api/v1/users/me", handlers.GetUserMe(userDB))
-	mux.HandleFunc("/api/v1/users/nearby", handlers.GetNearbyUsers(userDB, cfg.NearbyRadiusKm, staleThreshold))
+	// Every /api/v1 route carries user data, so all of them require a verified
+	// token. /api/health and /api/hello stay public for Render's health check.
+	protected := func(pattern string, h http.HandlerFunc) {
+		mux.Handle(pattern, authn.Middleware(h))
+	}
 
-	mux.HandleFunc("/api/v1/location", handlers.PushLocation(userDB))
+	protected("/api/v1/users", handlers.CreateUser(userDB))
+	protected("/api/v1/users/me", handlers.GetUserMe(userDB))
+	protected("/api/v1/users/nearby", handlers.GetNearbyUsers(userDB, cfg.NearbyRadiusKm, staleThreshold))
 
-	mux.HandleFunc("/api/v1/ride-requests", handlers.CreateRideRequest(userDB, ttl))
-	mux.HandleFunc("/api/v1/ride-requests/incoming", handlers.GetIncomingRequests(userDB))
-	mux.HandleFunc("/api/v1/ride-requests/{id}", handlers.GetRideRequest(userDB))
-	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", handlers.AcceptRideRequest(userDB))
-	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB))
+	protected("/api/v1/location", handlers.PushLocation(userDB))
+
+	protected("/api/v1/ride-requests", handlers.CreateRideRequest(userDB, ttl))
+	protected("/api/v1/ride-requests/incoming", handlers.GetIncomingRequests(userDB))
+	protected("/api/v1/ride-requests/{id}", handlers.GetRideRequest(userDB))
+	protected("/api/v1/ride-requests/{id}/accept", handlers.AcceptRideRequest(userDB))
+	protected("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB))
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -39,7 +39,7 @@ func (m *mockActionRepo) SetRideRequestStatus(ctx context.Context, id, status st
 }
 
 func getIncoming(sub string, repo incomingRideRequestRepository) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/ride-requests/incoming?sub="+sub, nil)
+	r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/ride-requests/incoming", nil), sub)
 	w := httptest.NewRecorder()
 	GetIncomingRequests(repo).ServeHTTP(w, r)
 	return w
@@ -48,7 +48,7 @@ func getIncoming(sub string, repo incomingRideRequestRepository) *httptest.Respo
 func patchAction(path, sub string, handler http.Handler) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
 	mux.Handle(path, handler)
-	r := httptest.NewRequest(http.MethodPatch, path+"?sub="+sub, nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, path, nil), sub)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 	return w
@@ -95,15 +95,15 @@ func TestGetIncomingRequests_Empty(t *testing.T) {
 	}
 }
 
-func TestGetIncomingRequests_MissingSub(t *testing.T) {
+func TestGetIncomingRequests_Unauthenticated(t *testing.T) {
 	repo := &mockIncomingRepo{}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/ride-requests/incoming", nil)
 	w := httptest.NewRecorder()
 	GetIncomingRequests(repo).ServeHTTP(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
-	assertError(t, w, "sub is required")
+	assertError(t, w, "unauthorized")
 }
 
 func TestGetIncomingRequests_DBError(t *testing.T) {
@@ -129,7 +129,7 @@ func TestAcceptRideRequest_Success(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", AcceptRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -146,7 +146,8 @@ func TestAcceptRideRequest_WrongDriver(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", AcceptRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept?sub=auth0|other", nil)
+	// authenticated, but not the driver the request was addressed to
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept", nil), "auth0|other")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -166,7 +167,7 @@ func TestAcceptRideRequest_Expired(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", AcceptRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -186,7 +187,7 @@ func TestAcceptRideRequest_AlreadyAccepted(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", AcceptRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/accept", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -204,7 +205,7 @@ func TestDeclineRideRequest_Success(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", DeclineRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/decline?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/decline", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -223,7 +224,7 @@ func TestDeclineRideRequest_AlreadyDeclined(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", DeclineRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/decline?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/req-uuid/decline", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 
@@ -241,7 +242,7 @@ func TestDeclineRideRequest_NotFound(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", DeclineRideRequest(repo))
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/unknown/decline?sub=auth0|driver", nil)
+	r := withSubject(httptest.NewRequest(http.MethodPatch, "/api/v1/ride-requests/unknown/decline", nil), "auth0|driver")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 

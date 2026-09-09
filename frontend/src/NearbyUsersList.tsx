@@ -7,20 +7,19 @@ interface Driver {
 }
 
 interface Props {
-  sub: string
   onRequestRide: (driver: Driver) => void
 }
 
 type ErrorKind = 'location' | 'fetch'
 
-export default function NearbyUsersList({ sub, onRequestRide }: Props) {
+export default function NearbyUsersList({ onRequestRide }: Props) {
   const [users, setUsers] = useState<NearbyUser[] | null>(null)
   const [error, setError] = useState<ErrorKind | null>(null)
   const [loading, setLoading] = useState(true)
 
   function fetchNearby() {
     setLoading(true)
-    backendClient.getNearbyUsers(sub)
+    backendClient.getNearbyUsers()
       .then(data => { setUsers(data); setError(null) })
       .catch(err => setError(err instanceof ApiError && err.status === 404 ? 'location' : 'fetch'))
       .finally(() => setLoading(false))
@@ -28,7 +27,7 @@ export default function NearbyUsersList({ sub, onRequestRide }: Props) {
 
   useEffect(() => {
     fetchNearby()
-  }, [sub])
+  }, [])
 
   if (loading) return <p>Finding nearby users...</p>
 

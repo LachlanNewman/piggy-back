@@ -32,7 +32,7 @@ func (m *mockNearbyRepo) GetNearbyUsers(ctx context.Context, sub string, lat, ln
 }
 
 func getNearby(sub string, repo nearbyUserRepository) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby?sub="+sub, nil)
+	r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil), sub)
 	w := httptest.NewRecorder()
 	GetNearbyUsers(repo, 5, 60*time.Second).ServeHTTP(w, r)
 	return w
@@ -83,16 +83,16 @@ func TestGetNearbyUsers_NoLocation(t *testing.T) {
 	assertError(t, w, "location not found — push your location first")
 }
 
-func TestGetNearbyUsers_MissingSub(t *testing.T) {
+func TestGetNearbyUsers_Unauthenticated(t *testing.T) {
 	repo := &mockNearbyRepo{}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil)
 	w := httptest.NewRecorder()
 	GetNearbyUsers(repo, 5, 60*time.Second).ServeHTTP(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
-	assertError(t, w, "sub is required")
+	assertError(t, w, "unauthorized")
 }
 
 func TestGetNearbyUsers_DBError(t *testing.T) {
@@ -117,7 +117,7 @@ func TestGetNearbyUsers_RadiusCap(t *testing.T) {
 			return nil, nil
 		},
 	}
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby?sub=auth0|abc", nil)
+	r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil), "auth0|abc")
 	w := httptest.NewRecorder()
 	GetNearbyUsers(repo, 50, 60*time.Second).ServeHTTP(w, r) // 50 > max 20
 

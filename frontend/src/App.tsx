@@ -4,7 +4,7 @@ import ProfileCompletionForm from './ProfileCompletionForm'
 import NearbyUsersList from './NearbyUsersList'
 import RideRequestForm from './RideRequestForm'
 import IncomingRequests from './IncomingRequests'
-import { backendClient } from './api/client'
+import { backendClient, setTokenProvider } from './api/client'
 
 const POLL_INTERVAL_MS = 30_000
 
@@ -23,6 +23,15 @@ export default function App() {
   const [locationDenied, setLocationDenied] = useState(false)
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null)
 
+  // Registered before any request-firing effect below. The ref keeps the
+  // provider reading the current token rather than the one from first render,
+  // so requests after a silent renew use the refreshed token.
+  const userRef = useRef(user)
+  userRef.current = user
+  useEffect(() => {
+    setTokenProvider(() => userRef.current?.access_token)
+  }, [])
+
   useEffect(() => {
     if (isLoading || sessionRestoreAttempted.current) return
     if (!isAuthenticated) {
@@ -38,7 +47,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || isLoading || restoringSession || !user) return
     setProfileStatus('loading')
-    backendClient.getUserMe(user.profile.sub)
+    backendClient.getUserMe()
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }, [isAuthenticated, isLoading, restoringSession, user])
@@ -50,7 +59,7 @@ export default function App() {
     function pushLocation() {
       navigator.geolocation.getCurrentPosition(
         pos => {
-          backendClient.pushLocation(user!.profile.sub, pos.coords.latitude, pos.coords.longitude).catch(() => {})
+          backendClient.pushLocation(pos.coords.latitude, pos.coords.longitude).catch(() => {})
         },
         () => setLocationDenied(true)
       )
@@ -64,7 +73,7 @@ export default function App() {
   function handleProfileComplete() {
     if (!user) return
     setProfileStatus('loading')
-    backendClient.getUserMe(user.profile.sub)
+    backendClient.getUserMe()
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }
@@ -109,13 +118,12 @@ export default function App() {
         </p>
       )}
 
-      <IncomingRequests sub={user!.profile.sub} pollIntervalMs={POLL_INTERVAL_MS} />
+      <IncomingRequests pollIntervalMs={POLL_INTERVAL_MS} />
 
       <hr />
 
       {selectedDriver ? (
         <RideRequestForm
-          sub={user!.profile.sub}
           driverID={selectedDriver.sub}
           driverName={selectedDriver.name}
           pollIntervalMs={POLL_INTERVAL_MS}
@@ -123,7 +131,6 @@ export default function App() {
         />
       ) : (
         <NearbyUsersList
-          sub={user!.profile.sub}
           onRequestRide={driver => setSelectedDriver(driver)}
         />
       )}

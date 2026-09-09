@@ -14,11 +14,11 @@ import (
 )
 
 type mockRideRequestRepo struct {
-	createFn           func(ctx context.Context, p db.CreateRideRequestParams) (string, error)
-	getFn              func(ctx context.Context, id string) (db.RideRequest, error)
-	hasActiveFn        func(ctx context.Context, riderID string) (bool, error)
-	setStatusFn        func(ctx context.Context, id, status string) error
-	getIncomingFn      func(ctx context.Context, driverID string) ([]db.RideRequest, error)
+	createFn      func(ctx context.Context, p db.CreateRideRequestParams) (string, error)
+	getFn         func(ctx context.Context, id string) (db.RideRequest, error)
+	hasActiveFn   func(ctx context.Context, riderID string) (bool, error)
+	setStatusFn   func(ctx context.Context, id, status string) error
+	getIncomingFn func(ctx context.Context, driverID string) ([]db.RideRequest, error)
 }
 
 func (m *mockRideRequestRepo) CreateRideRequest(ctx context.Context, p db.CreateRideRequestParams) (string, error) {
@@ -53,9 +53,9 @@ func (m *mockRideRequestRepo) GetIncomingRequests(ctx context.Context, driverID 
 var defaultTTL = 15 * time.Minute
 
 func postRideRequest(sub, body string) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/ride-requests?sub="+sub, bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/ride-requests", bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
-	return r
+	return withSubject(r, sub)
 }
 
 func getRideRequestWithRepo(id string, repo rideRequestRepository) *httptest.ResponseRecorder {
@@ -99,17 +99,17 @@ func TestCreateRideRequest_ActiveRequestConflict(t *testing.T) {
 	assertError(t, w, "you already have an active request")
 }
 
-func TestCreateRideRequest_MissingSub(t *testing.T) {
+func TestCreateRideRequest_Unauthenticated(t *testing.T) {
 	repo := &mockRideRequestRepo{}
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/ride-requests", bytes.NewBufferString(validRideBody))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	CreateRideRequest(repo, defaultTTL).ServeHTTP(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
-	assertError(t, w, "sub is required")
+	assertError(t, w, "unauthorized")
 }
 
 func TestCreateRideRequest_MissingPickupAddress(t *testing.T) {
@@ -173,7 +173,7 @@ func TestCreateRideRequest_DBError(t *testing.T) {
 
 func TestCreateRideRequest_MethodNotAllowed(t *testing.T) {
 	repo := &mockRideRequestRepo{}
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/ride-requests?sub=auth0|abc", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/ride-requests", nil)
 	w := httptest.NewRecorder()
 	CreateRideRequest(repo, defaultTTL).ServeHTTP(w, r)
 

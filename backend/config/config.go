@@ -1,6 +1,8 @@
 package config
 
 type Config struct {
+	OIDCIssuer               string  `env:"OIDC_ISSUER"`
+	OIDCAudience             string  `env:"OIDC_AUDIENCE"`
 	MaximumWeightDifference  string  `env:"MATCH_MAXIMUM_WEIGHT_DIFFERENCE"`
 	LocationPollIntervalSecs int     `env:"LOCATION_POLL_INTERVAL_SECONDS" envDefault:"30"`
 	NearbyRadiusKm           float64 `env:"NEARBY_RADIUS_KM" envDefault:"5"`

@@ -20,8 +20,8 @@ func (m *mockUserProfileRepo) GetUserBySubject(ctx context.Context, sub string) 
 }
 
 func getMe(sub string) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/me?sub="+sub, nil)
-	return r
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
+	return withSubject(r, sub)
 }
 
 func TestGetUserMe_Found(t *testing.T) {
@@ -61,16 +61,16 @@ func TestGetUserMe_NotFound(t *testing.T) {
 	assertError(t, w, "user not found")
 }
 
-func TestGetUserMe_MissingSub(t *testing.T) {
+func TestGetUserMe_Unauthenticated(t *testing.T) {
 	repo := &mockUserProfileRepo{}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	w := httptest.NewRecorder()
 	GetUserMe(repo).ServeHTTP(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
-	assertError(t, w, "sub is required")
+	assertError(t, w, "unauthorized")
 }
 
 func TestGetUserMe_DBError(t *testing.T) {

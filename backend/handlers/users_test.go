@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"backend/auth"
 	"backend/db"
 )
 
@@ -23,11 +24,10 @@ func (m *mockUserRepo) CreateUser(ctx context.Context, p db.CreateUserParams) (i
 func post(body string) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/users", bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
-	return r
+	return withSubject(r, testSubject)
 }
 
 const validBody = `{
-	"auth_subject":"auth0|abc123",
 	"first_name":"Jane","last_name":"Doe","email":"jane@example.com",
 	"date_of_birth":"1995-06-15","weight":68.5,"gender":"female"
 }`
@@ -81,25 +81,45 @@ func TestCreateUser_InvalidJSON(t *testing.T) {
 	assertError(t, w, "invalid JSON")
 }
 
-func TestCreateUser_MissingAuthSubject(t *testing.T) {
+func TestCreateUser_Unauthenticated(t *testing.T) {
 	repo := &mockUserRepo{}
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/users", bytes.NewBufferString(validBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	CreateUser(repo).ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	assertError(t, w, "unauthorized")
+}
+
+// The subject must come from the verified token, never the request body —
+// otherwise any authenticated caller could write a profile for someone else.
+func TestCreateUser_IgnoresAuthSubjectInBody(t *testing.T) {
+	var got string
+	repo := &mockUserRepo{fn: func(_ context.Context, p db.CreateUserParams) (int, bool, error) {
+		got = p.AuthSubject
+		return 1, true, nil
+	}}
+
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
+		"auth_subject":"auth0|attacker",
 		"first_name":"Jane","last_name":"Doe","email":"jane@example.com",
 		"date_of_birth":"1995-06-15","weight":68.5,"gender":"female"
 	}`))
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if got != testSubject {
+		t.Errorf("expected subject %q from the token, got %q", testSubject, got)
 	}
-	assertError(t, w, "auth_subject is required")
 }
 
 func TestCreateUser_MissingFirstName(t *testing.T) {
 	repo := &mockUserRepo{}
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
-		"auth_subject":"auth0|abc","last_name":"Doe","email":"jane@example.com",
+		"last_name":"Doe","email":"jane@example.com",
 		"date_of_birth":"1995-06-15","weight":68.5,"gender":"female"
 	}`))
 
@@ -113,7 +133,7 @@ func TestCreateUser_InvalidEmail(t *testing.T) {
 	repo := &mockUserRepo{}
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
-		"auth_subject":"auth0|abc","first_name":"Jane","last_name":"Doe","email":"not-an-email",
+		"first_name":"Jane","last_name":"Doe","email":"not-an-email",
 		"date_of_birth":"1995-06-15","weight":68.5,"gender":"female"
 	}`))
 
@@ -127,7 +147,7 @@ func TestCreateUser_InvalidDateFormat(t *testing.T) {
 	repo := &mockUserRepo{}
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
-		"auth_subject":"auth0|abc","first_name":"Jane","last_name":"Doe","email":"jane@example.com",
+		"first_name":"Jane","last_name":"Doe","email":"jane@example.com",
 		"date_of_birth":"15-06-1995","weight":68.5,"gender":"female"
 	}`))
 
@@ -141,7 +161,7 @@ func TestCreateUser_InvalidGender(t *testing.T) {
 	repo := &mockUserRepo{}
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
-		"auth_subject":"auth0|abc","first_name":"Jane","last_name":"Doe","email":"jane@example.com",
+		"first_name":"Jane","last_name":"Doe","email":"jane@example.com",
 		"date_of_birth":"1995-06-15","weight":68.5,"gender":"other"
 	}`))
 
@@ -155,7 +175,7 @@ func TestCreateUser_WeightNotPositive(t *testing.T) {
 	repo := &mockUserRepo{}
 	w := httptest.NewRecorder()
 	CreateUser(repo).ServeHTTP(w, post(`{
-		"auth_subject":"auth0|abc","first_name":"Jane","last_name":"Doe","email":"jane@example.com",
+		"first_name":"Jane","last_name":"Doe","email":"jane@example.com",
 		"date_of_birth":"1995-06-15","weight":0,"gender":"female"
 	}`))
 
@@ -188,6 +208,14 @@ func TestCreateUser_MethodNotAllowed(t *testing.T) {
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", w.Code)
 	}
+}
+
+const testSubject = "auth0|abc123"
+
+// withSubject returns r carrying sub as the authenticated subject, standing in
+// for what auth.Middleware does in production.
+func withSubject(r *http.Request, sub string) *http.Request {
+	return r.WithContext(auth.ContextWithSubject(r.Context(), sub))
 }
 
 func assertError(t *testing.T, w *httptest.ResponseRecorder, want string) {

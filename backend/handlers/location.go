@@ -23,9 +23,8 @@ func PushLocation(repo locationRepository) http.HandlerFunc {
 			return
 		}
 
-		sub := r.URL.Query().Get("sub")
-		if sub == "" {
-			writeError(w, http.StatusBadRequest, "sub is required")
+		sub, ok := authenticatedSubject(w, r)
+		if !ok {
 			return
 		}
 

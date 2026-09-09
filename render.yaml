@@ -21,6 +21,14 @@ services:
         fromDatabase:
           name: piggy-back-db
           property: connectionString
+      # Auth0 tenant URL and the API identifier tokens must be minted for.
+      # OIDC_AUDIENCE must match the frontend's VITE_OIDC_AUDIENCE, or every
+      # request 401s. Discovery runs at startup, so a wrong issuer fails the
+      # deploy rather than every request.
+      - key: OIDC_ISSUER
+        sync: false
+      - key: OIDC_AUDIENCE
+        sync: false
 
   - type: web
     runtime: static
@@ -50,4 +58,6 @@ services:
       - key: VITE_OIDC_CLIENT_ID
         sync: false
       - key: VITE_OIDC_REDIRECT_URI
+        sync: false
+      - key: VITE_OIDC_AUDIENCE
         sync: false

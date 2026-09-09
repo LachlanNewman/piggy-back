@@ -2,16 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { backendClient, IncomingRequest } from './api/client'
 
 interface Props {
-  sub: string
   pollIntervalMs: number
 }
 
-export default function IncomingRequests({ sub, pollIntervalMs }: Props) {
+export default function IncomingRequests({ pollIntervalMs }: Props) {
   const [requests, setRequests] = useState<IncomingRequest[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   function fetchIncoming() {
-    backendClient.getIncomingRequests(sub)
+    backendClient.getIncomingRequests()
       .then(data => setRequests(Array.isArray(data) ? data : []))
       .catch(() => {})
   }
@@ -22,16 +21,16 @@ export default function IncomingRequests({ sub, pollIntervalMs }: Props) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [sub, pollIntervalMs])
+  }, [pollIntervalMs])
 
   function handleAccept(id: string) {
-    backendClient.acceptRideRequest(id, sub)
+    backendClient.acceptRideRequest(id)
       .then(() => setRequests(prev => prev.filter(r => r.id !== id)))
       .catch(() => {})
   }
 
   function handleDecline(id: string) {
-    backendClient.declineRideRequest(id, sub)
+    backendClient.declineRideRequest(id)
       .then(() => setRequests(prev => prev.filter(r => r.id !== id)))
       .catch(() => {})
   }

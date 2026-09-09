@@ -21,9 +21,9 @@ func (m *mockLocationRepo) UpsertUserLocation(ctx context.Context, sub string, l
 }
 
 func postLocation(sub, body string) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/location?sub="+sub, bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/location", bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
-	return r
+	return withSubject(r, sub)
 }
 
 const validLocationBody = `{"lat":-33.8688,"lng":151.2093}`
@@ -38,17 +38,17 @@ func TestPushLocation_Success(t *testing.T) {
 	}
 }
 
-func TestPushLocation_MissingSub(t *testing.T) {
+func TestPushLocation_Unauthenticated(t *testing.T) {
 	repo := &mockLocationRepo{}
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/location", bytes.NewBufferString(validLocationBody))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	PushLocation(repo).ServeHTTP(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
-	assertError(t, w, "sub is required")
+	assertError(t, w, "unauthorized")
 }
 
 func TestPushLocation_InvalidJSON(t *testing.T) {
@@ -111,7 +111,7 @@ func TestPushLocation_ZeroCoordinatesAccepted(t *testing.T) {
 
 func TestPushLocation_MethodNotAllowed(t *testing.T) {
 	repo := &mockLocationRepo{}
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/location?sub=auth0|abc", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/location", nil)
 	w := httptest.NewRecorder()
 	PushLocation(repo).ServeHTTP(w, r)
 

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { backendClient, ApiError } from './api/client'
 
 interface Props {
-  sub: string
   driverID: string
   driverName: string
   pollIntervalMs: number
@@ -11,7 +10,7 @@ interface Props {
 
 type RideStatus = 'accepted' | 'declined' | 'expired'
 
-export default function RideRequestForm({ sub, driverID, driverName, pollIntervalMs, onCancel }: Props) {
+export default function RideRequestForm({ driverID, driverName, pollIntervalMs, onCancel }: Props) {
   const [pickup, setPickup] = useState('')
   const [dropoff, setDropoff] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -47,7 +46,7 @@ export default function RideRequestForm({ sub, driverID, driverName, pollInterva
       return
     }
     setError(null)
-    backendClient.createRideRequest(sub, { pickupAddress: pickup, dropoffAddress: dropoff, driverID })
+    backendClient.createRideRequest({ pickupAddress: pickup, dropoffAddress: dropoff, driverID })
       .then(data => setRequestId(data.id))
       .catch(err => {
         if (err instanceof ApiError && err.status === 409) {

@@ -33,7 +33,6 @@ export default function ProfileCompletionForm({ onComplete }: Props) {
     setStatus(null)
 
     const body = {
-      auth_subject:  user?.profile.sub          ?? '',
       first_name:    user?.profile.given_name   ?? '',
       last_name:     user?.profile.family_name  ?? '',
       email:         user?.profile.email        ?? '',
