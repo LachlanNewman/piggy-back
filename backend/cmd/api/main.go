@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"backend/config"
@@ -102,6 +103,12 @@ func main() {
 	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", handlers.AcceptRideRequest(userDB))
 	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB))
 
-	log.Println("backend listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", requestLogger(cors(mux))))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+
+	log.Printf("backend listening on %s", addr)
+	log.Fatal(http.ListenAndServe(addr, requestLogger(cors(mux))))
 }

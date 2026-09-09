@@ -1,0 +1,23 @@
+databases:
+  - name: piggy-back-db
+    databaseName: piggyback
+    user: piggyback
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: piggy-back
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: piggy-back-db
+          property: connectionString
