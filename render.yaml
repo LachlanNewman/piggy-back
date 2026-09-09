@@ -25,7 +25,6 @@ services:
   - type: web
     runtime: static
     name: piggy-back-frontend
-    region: oregon
     branch: main
     rootDir: frontend
     buildCommand: npm ci && npm run build
@@ -41,7 +40,7 @@ services:
       # VITE_* vars are inlined at build time, so changing any of these
       # requires a rebuild, not just a restart.
       - key: VITE_API_BASE_URL
-        value: https://piggy-back-97mj.onrender.com
+        value: https://piggy-back-qwo5.onrender.com
       # Set in the Dashboard once an OIDC provider is reachable — the Keycloak
       # in docker-compose.yml is local-only and its realm allows just
       # http://localhost:5173. VITE_OIDC_REDIRECT_URI must be this site's own
