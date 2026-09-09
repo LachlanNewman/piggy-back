@@ -33,6 +33,11 @@ services:
       # this service expects. Defaults to info when unset.
       - key: LOG_LEVEL
         sync: false
+      # Upper bound on the nearby search radius, in km. NEARBY_RADIUS_KM is
+      # clamped to this, so it bounds how expensive one search can get.
+      # Defaults to 20 when unset.
+      - key: MAX_NEARBY_RADIUS_KM
+        sync: false
 
   - type: web
     runtime: static

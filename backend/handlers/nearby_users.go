@@ -11,8 +11,6 @@ import (
 	"backend/db"
 )
 
-const maxNearbyRadiusKm = 20.0
-
 type nearbyUserRepository interface {
 	GetUserLocation(ctx context.Context, sub string) (lat, lng float64, err error)
 	GetNearbyUsers(ctx context.Context, sub string, lat, lng, radiusKm float64, staleThreshold time.Duration) ([]db.NearbyUser, error)
@@ -25,9 +23,11 @@ type nearbyUserResponse struct {
 	LastName    string `json:"last_name"`
 }
 
-func GetNearbyUsers(repo nearbyUserRepository, radiusKm float64, staleThreshold time.Duration) http.HandlerFunc {
-	if radiusKm > maxNearbyRadiusKm {
-		radiusKm = maxNearbyRadiusKm
+// GetNearbyUsers clamps radiusKm to maxRadiusKm, which bounds how expensive a
+// single search can get regardless of how NEARBY_RADIUS_KM is configured.
+func GetNearbyUsers(repo nearbyUserRepository, radiusKm, maxRadiusKm float64, staleThreshold time.Duration) http.HandlerFunc {
+	if radiusKm > maxRadiusKm {
+		radiusKm = maxRadiusKm
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {

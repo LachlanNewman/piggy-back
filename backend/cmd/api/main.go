@@ -105,6 +105,12 @@ func main() {
 
 	userDB := db.NewDB(pool)
 
+	// A zero or negative radius silently returns nothing, so fail loudly instead.
+	if cfg.NearbyRadiusKm <= 0 || cfg.MaxNearbyRadiusKm <= 0 {
+		log.Fatalf("NEARBY_RADIUS_KM and MAX_NEARBY_RADIUS_KM must both be greater than 0 (got %v and %v)",
+			cfg.NearbyRadiusKm, cfg.MaxNearbyRadiusKm)
+	}
+
 	ttl := time.Duration(cfg.RideRequestTTLMinutes) * time.Minute
 	staleThreshold := time.Duration(cfg.LocationPollIntervalSecs*2) * time.Second
 
@@ -116,7 +122,7 @@ func main() {
 
 	protected("/api/v1/users", handlers.CreateUser(userDB))
 	protected("/api/v1/users/me", handlers.GetUserMe(userDB))
-	protected("/api/v1/users/nearby", handlers.GetNearbyUsers(userDB, cfg.NearbyRadiusKm, staleThreshold))
+	protected("/api/v1/users/nearby", handlers.GetNearbyUsers(userDB, cfg.NearbyRadiusKm, cfg.MaxNearbyRadiusKm, staleThreshold))
 
 	protected("/api/v1/location", handlers.PushLocation(userDB))
 

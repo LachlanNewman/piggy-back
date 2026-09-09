@@ -68,7 +68,9 @@ Package layout:
   With `LOG_LEVEL=debug` it logs each token's `aud`/`iss` beside what the service
   expects — the fastest way to diagnose a 401. Those claims are read *without*
   verifying the signature, so they are for diagnostics only
-- `config/config.go` — env-parsed config struct (uses `caarlos0/env`)
+- `config/config.go` — env-parsed config struct (uses `caarlos0/env`). Distance
+  knobs: `NEARBY_RADIUS_KM` (default 5) is the search radius, clamped at request
+  time to `MAX_NEARBY_RADIUS_KM` (default 20). Both must be > 0 or startup fails
 - `db/db.go` — `New()` creates pgxpool and runs goose migrations on startup; `NewDB()` returns `*DB` querier
 - `db/migrations/` — SQL migration files (goose, embedded at build time)
 - `db/users.go` — `DB.CreateUser` (upsert), `DB.GetUserBySubject`; defines `querier` interface for mocking

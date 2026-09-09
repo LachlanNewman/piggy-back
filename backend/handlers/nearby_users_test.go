@@ -34,7 +34,7 @@ func (m *mockNearbyRepo) GetNearbyUsers(ctx context.Context, sub string, lat, ln
 func getNearby(sub string, repo nearbyUserRepository) *httptest.ResponseRecorder {
 	r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil), sub)
 	w := httptest.NewRecorder()
-	GetNearbyUsers(repo, 5, 60*time.Second).ServeHTTP(w, r)
+	GetNearbyUsers(repo, 5, 20, 60*time.Second).ServeHTTP(w, r)
 	return w
 }
 
@@ -87,7 +87,7 @@ func TestGetNearbyUsers_Unauthenticated(t *testing.T) {
 	repo := &mockNearbyRepo{}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil)
 	w := httptest.NewRecorder()
-	GetNearbyUsers(repo, 5, 60*time.Second).ServeHTTP(w, r)
+	GetNearbyUsers(repo, 5, 20, 60*time.Second).ServeHTTP(w, r)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
@@ -109,19 +109,36 @@ func TestGetNearbyUsers_DBError(t *testing.T) {
 	assertError(t, w, "could not fetch nearby users")
 }
 
-func TestGetNearbyUsers_RadiusCap(t *testing.T) {
-	var capturedRadius float64
-	repo := &mockNearbyRepo{
-		nearbyFn: func(_ context.Context, _ string, _, _, r float64, _ time.Duration) ([]db.NearbyUser, error) {
-			capturedRadius = r
-			return nil, nil
-		},
+func TestGetNearbyUsers_RadiusRespectsConfiguredCap(t *testing.T) {
+	tests := []struct {
+		name           string
+		radius, max    float64
+		expectedRadius float64
+	}{
+		{"under the cap is untouched", 5, 20, 5},
+		{"over the cap is clamped", 50, 20, 20},
+		{"equal to the cap is untouched", 20, 20, 20},
+		{"a raised cap allows a larger radius", 50, 40, 40},
+		{"a lowered cap clamps harder", 15, 2, 2},
 	}
-	r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil), "auth0|abc")
-	w := httptest.NewRecorder()
-	GetNearbyUsers(repo, 50, 60*time.Second).ServeHTTP(w, r) // 50 > max 20
 
-	if capturedRadius != maxNearbyRadiusKm {
-		t.Errorf("expected radius capped at %f, got %f", maxNearbyRadiusKm, capturedRadius)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedRadius float64
+			repo := &mockNearbyRepo{
+				nearbyFn: func(_ context.Context, _ string, _, _, r float64, _ time.Duration) ([]db.NearbyUser, error) {
+					capturedRadius = r
+					return nil, nil
+				},
+			}
+			r := withSubject(httptest.NewRequest(http.MethodGet, "/api/v1/users/nearby", nil), "auth0|abc")
+			w := httptest.NewRecorder()
+			GetNearbyUsers(repo, tt.radius, tt.max, 60*time.Second).ServeHTTP(w, r)
+
+			if capturedRadius != tt.expectedRadius {
+				t.Errorf("radius %v with cap %v: expected %v, got %v",
+					tt.radius, tt.max, tt.expectedRadius, capturedRadius)
+			}
+		})
 	}
 }
