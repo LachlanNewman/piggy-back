@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { backendClient, ApiError, type RideRequest } from '@/lib/api/client'
 import { useNow, msUntil, formatCountdown } from '@/lib/time'
+import PiggybackMark from './PiggybackMark'
 import { useRideEvents, type ConnectionState, type RideEvent } from '@/lib/realtime'
 import type { Carrier } from './NearbyCarriers'
 
@@ -55,6 +56,9 @@ export default function RideRequestFlow({
   // The server marks a request expired lazily, on read. The deadline is known
   // up front, so the countdown settles it on the exact second instead.
   const remaining = request ? msUntil(request.expires_at, now) : 0
+  const totalMs = request
+    ? Math.max(1, Date.parse(request.expires_at) - Date.parse(request.requested_at))
+    : 1
   const status: SettledStatus | 'pending' | null = !request
     ? null
     : request.status === 'accepted' || request.status === 'declined' || request.status === 'expired'
@@ -133,8 +137,11 @@ export default function RideRequestFlow({
 
   if (requestId) {
     return (
-      <div className="card status-card">
-        <div className="status-emoji">🐷</div>
+      <div className="card card-accent status-card">
+        <div className="status-timer">
+          <CountdownRing remaining={request ? remaining / totalMs : 1} />
+          <div className="status-mark status-mark-accent"><PiggybackMark /></div>
+        </div>
         <h2>Waiting on {carrier.name}<span className="dots" /></h2>
         <p className="muted">
           {request
@@ -142,7 +149,7 @@ export default function RideRequestFlow({
             : 'Sending your request…'}
         </p>
         <div className="btn-row">
-          <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
+          <button className="btn btn-secondary btn-block" onClick={onDone}>Cancel</button>
         </div>
       </div>
     )
@@ -152,7 +159,7 @@ export default function RideRequestFlow({
     <div className="card">
       <div className="card-head">
         <h2 className="card-title">Ride with {carrier.name}</h2>
-        <span className="pill">🐷 Piggyback</span>
+        <span className="pill">Piggyback</span>
       </div>
 
       <form onSubmit={handleSubmit} className="form">
@@ -180,7 +187,7 @@ export default function RideRequestFlow({
 
         {error && <p className="banner banner-error">{error}</p>}
 
-        <div className="btn-row">
+        <div className="btn-row btn-row-split">
           <button type="button" className="btn btn-secondary" onClick={onDone}>Back</button>
           <button type="submit" className="btn" disabled={submitting}>
             {submitting ? 'Sending…' : 'Request piggyback'}
@@ -208,12 +215,33 @@ function Outcome({
 }) {
   return (
     <div className="card status-card">
-      <div className="status-emoji">{emoji}</div>
+      <div className={`status-mark${tone === 'success' ? ' status-mark-success' : ''}`}>{emoji}</div>
       <h2 style={tone === 'success' ? { color: 'var(--green)' } : undefined}>{title}</h2>
       <p className="muted">{body}</p>
       <div className="btn-row">
         <button className="btn btn-block" onClick={onDone}>{doneLabel}</button>
       </div>
     </div>
+  )
+}
+
+const RING_R = 47
+const RING_C = 2 * Math.PI * RING_R
+
+/** Large ring that drains as the request nears expiry. */
+function CountdownRing({ remaining }: { remaining: number }) {
+  const clamped = Math.min(1, Math.max(0, remaining))
+  return (
+    <svg className="ring" viewBox="0 0 100 100" aria-hidden="true">
+      <circle className="ring-track" cx="50" cy="50" r={RING_R} />
+      <circle
+        className={`ring-progress${clamped < 0.25 ? ' is-urgent' : ''}`}
+        cx="50"
+        cy="50"
+        r={RING_R}
+        strokeDasharray={RING_C}
+        strokeDashoffset={RING_C * (1 - clamped)}
+      />
+    </svg>
   )
 }

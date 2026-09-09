@@ -126,7 +126,10 @@ No framework (no Gin/Echo/Chi); uses `net/http` only.
 - `app/providers.tsx` — client component; mounts `AuthProvider` (react-oidc-context) after hydration
 - `app/page.tsx` — client component; auth gate → profile-completion gate → ride app (location push, incoming requests, nearby carriers, ride flow)
 - `app/callback/page.tsx` — OIDC redirect callback, then `router.replace('/')`
-- `app/globals.css` — the design system (tokens, cards, buttons, forms, light/dark)
+- `app/globals.css` — the whole design system: tokens, cards, buttons, forms,
+  radar, countdown rings, trip rail, motion. Dark-first ("night ride"), with a
+  designed light variant; every animation is suppressed under
+  `prefers-reduced-motion`
 - `components/ProfileCompletionForm.tsx` — shown when `profile_complete` is false; POSTs to `/api/v1/users`
 - `components/NearbyCarriers.tsx` — nearby users available to carry; exports the `Carrier` type
 - `components/RideRequestFlow.tsx` — pickup/drop-off form, then follows the request live until accepted/declined/expired
@@ -136,7 +139,11 @@ No framework (no Gin/Echo/Chi); uses `net/http` only.
 - `lib/time.ts` — shared clock, countdowns, client-side expiry
 - `lib/api/client.ts` — typed backend client; zod-validated responses, `ApiError` for non-2xx
 - `lib/auth/splitTokenStore.ts` — custom OIDC token store: access/id tokens in memory, refresh token in a cookie
-- `lib/format.ts` — small display helpers
+- `components/PiggybackMark.tsx` — the brand mark (one figure carrying another)
+- `components/Avatar.tsx` — gradient avatar, optionally ringed by a countdown
+- `components/Radar.tsx` — sonar sweep shown while scanning for carriers
+- `components/RefreshButton.tsx` — compact icon button
+- `lib/format.ts` — initials and the per-person avatar gradient
 
 Routing is the App Router (no react-router). All product UI is client-rendered — the Go backend is the only data source.
 

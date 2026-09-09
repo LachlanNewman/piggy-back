@@ -10,6 +10,7 @@ import { backendClient, type IncomingRequest } from '@/lib/api/client'
 import { hasRefreshCookie } from '@/lib/auth/splitTokenStore'
 import { useEventStream, type ConnectionState } from '@/lib/realtime'
 import { useAlerts } from '@/lib/notifications'
+import PiggybackMark from '@/components/PiggybackMark'
 
 /** Location is pushed on movement, but never more often than this — the
  *  browser can fire watchPosition many times a second. */
@@ -107,8 +108,8 @@ export default function HomePage() {
       <main className="shell">
         <Brand />
         <div className="card status-card">
-          <div className="status-emoji">🐷</div>
-          <p className="muted">Saddling up<span className="dots" /></p>
+          <div className="status-mark status-mark-accent"><PiggybackMark /></div>
+          <p className="muted" style={{ marginTop: 16 }}>Saddling up<span className="dots" /></p>
         </div>
       </main>
     )
@@ -119,16 +120,16 @@ export default function HomePage() {
       <main className="shell">
         <Brand />
         <div className="hero">
-          <div className="hero-emoji">🐷</div>
-          <h1>Piggyback rides, on demand</h1>
+          <div className="hero-mark"><PiggybackMark /></div>
+          <h1>Piggyback rides,<br />on demand</h1>
           <p className="muted">
             Find someone nearby with a free back, tell them where you&apos;re going, and hop on.
           </p>
-          <button className="btn btn-block" style={{ marginTop: 22 }} onClick={() => signinRedirect()}>
+          <button className="btn btn-block" style={{ marginTop: 26 }} onClick={() => signinRedirect()}>
             Log in to ride
           </button>
         </div>
-        <p className="tiny" style={{ textAlign: 'center' }}>
+        <p className="section-note">
           Every rider is also a carrier. Someone carries you, you carry someone.
         </p>
       </main>
@@ -210,7 +211,7 @@ function LiveIndicator({ state }: { state: ConnectionState }) {
 function Brand({ bare = false }: { bare?: boolean }) {
   const brand = (
     <h1 className="brand">
-      <span className="brand-mark" aria-hidden="true">🐷</span>
+      <span className="brand-mark"><PiggybackMark /></span>
       Piggy Back
     </h1>
   )

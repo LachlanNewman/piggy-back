@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { backendClient, type IncomingRequest } from '@/lib/api/client'
-import { initials } from '@/lib/format'
 import { useNow, msUntil, formatCountdown } from '@/lib/time'
+import Avatar from './Avatar'
 import { useRideEvents, type ConnectionState, type RideEvent } from '@/lib/realtime'
 
 interface Props {
@@ -78,57 +78,68 @@ export default function IncomingRequests({ sub, subscribe, connection, onNewRequ
   if (live.length === 0) return null
 
   return (
-    <div className="card">
+    <div className="card card-accent">
       <div className="card-head">
         <h2 className="card-title">Someone wants a lift</h2>
         <span className="pill">{live.length} waiting</span>
       </div>
 
-      {live.map(rr => (
-        <div key={rr.id} className="request">
-          <div className="person" style={{ padding: 0, borderTop: 'none' }}>
-            <div className="avatar" aria-hidden="true">
-              {initials(rr.rider_first_name, rr.rider_last_name)}
+      {live.map(rr => {
+        const left = msUntil(rr.expires_at, now)
+        const total = Math.max(1, Date.parse(rr.expires_at) - Date.parse(rr.requested_at))
+        const urgent = left < total * 0.25
+        return (
+          <div key={rr.id} className="request">
+            <div className="person" style={{ padding: 0, borderTop: 'none' }}>
+              <Avatar
+                firstName={rr.rider_first_name}
+                lastName={rr.rider_last_name}
+                remaining={left / total}
+              />
+              <div className="person-body">
+                <div className="person-name">{rr.rider_first_name} {rr.rider_last_name}</div>
+                <p className="tiny" style={urgent ? { color: 'var(--red)' } : undefined}>
+                  {formatCountdown(left)} left to answer
+                </p>
+              </div>
             </div>
-            <div className="person-body">
-              <div className="person-name">{rr.rider_first_name} {rr.rider_last_name}</div>
-              <p className="tiny">
-                Expires in {formatCountdown(msUntil(rr.expires_at, now))}
-              </p>
-            </div>
-          </div>
 
-          <div className="trip">
-            <div className="trip-leg">
-              <span className="trip-dot" />
-              <span className="trip-leg-label">Pickup</span>
-              <span>{rr.pickup_address}</span>
+            <div className="trip">
+              <div className="trip-leg">
+                <span className="trip-rail"><span className="trip-dot" /></span>
+                <span className="trip-text">
+                  <span className="trip-label">Pickup</span>
+                  <span className="trip-value">{rr.pickup_address}</span>
+                </span>
+              </div>
+              <div className="trip-leg">
+                <span className="trip-rail"><span className="trip-dot is-dropoff" /></span>
+                <span className="trip-text">
+                  <span className="trip-label">Drop-off</span>
+                  <span className="trip-value">{rr.dropoff_address}</span>
+                </span>
+              </div>
             </div>
-            <div className="trip-leg">
-              <span className="trip-dot is-dropoff" />
-              <span className="trip-leg-label">Drop-off</span>
-              <span>{rr.dropoff_address}</span>
-            </div>
-          </div>
 
-          <div className="btn-row">
-            <button
-              className="btn btn-decline"
-              disabled={acting === rr.id}
-              onClick={() => respond(rr.id, 'decline')}
-            >
-              Decline
-            </button>
-            <button
-              className="btn btn-accept"
-              disabled={acting === rr.id}
-              onClick={() => respond(rr.id, 'accept')}
-            >
-              {acting === rr.id ? 'Saving…' : 'Accept'}
-            </button>
+            <div className="btn-row">
+              <button
+                className="btn btn-decline"
+                disabled={acting === rr.id}
+                onClick={() => respond(rr.id, 'decline')}
+              >
+                Decline
+              </button>
+              <button
+                className="btn btn-accept"
+                disabled={acting === rr.id}
+                onClick={() => respond(rr.id, 'accept')}
+              >
+                {acting === rr.id ? 'Saving…' : 'Accept'}
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
