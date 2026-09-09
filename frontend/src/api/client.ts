@@ -75,18 +75,30 @@ export interface CreateRideRequestParams {
   driverID: string
 }
 
+// --- Base URL ---
+
+// Empty in dev, where Vite proxies /api to the backend (see vite.config.ts).
+// Set VITE_API_BASE_URL when the frontend is served separately from the API,
+// e.g. a Render static site calling the backend web service. Baked in at build
+// time, so changing it requires a rebuild.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+
+function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`
+}
+
 // --- Client ---
 
 class BackendClient {
   async getUserMe(sub: string): Promise<UserMe | null> {
-    const res = await fetch(`/api/v1/users/me?sub=${encodeURIComponent(sub)}`)
+    const res = await fetch(apiUrl(`/api/v1/users/me?sub=${encodeURIComponent(sub)}`))
     if (res.status === 404) return null
     if (!res.ok) throw new ApiError(res.status, 'profile check failed')
     return UserMeSchema.parse(await res.json())
   }
 
   async createUser(body: CreateUserParams): Promise<{ id: number }> {
-    const res = await fetch('/api/v1/users', {
+    const res = await fetch(apiUrl('/api/v1/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -97,7 +109,7 @@ class BackendClient {
   }
 
   async pushLocation(sub: string, lat: number, lng: number): Promise<void> {
-    await fetch(`/api/v1/location?sub=${encodeURIComponent(sub)}`, {
+    await fetch(apiUrl(`/api/v1/location?sub=${encodeURIComponent(sub)}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lat, lng }),
@@ -105,13 +117,13 @@ class BackendClient {
   }
 
   async getNearbyUsers(sub: string): Promise<NearbyUser[]> {
-    const res = await fetch(`/api/v1/users/nearby?sub=${encodeURIComponent(sub)}`)
+    const res = await fetch(apiUrl(`/api/v1/users/nearby?sub=${encodeURIComponent(sub)}`))
     if (!res.ok) throw new ApiError(res.status, 'could not fetch nearby users')
     return z.array(NearbyUserSchema).parse(await res.json())
   }
 
   async createRideRequest(sub: string, params: CreateRideRequestParams): Promise<{ id: string }> {
-    const res = await fetch(`/api/v1/ride-requests?sub=${encodeURIComponent(sub)}`, {
+    const res = await fetch(apiUrl(`/api/v1/ride-requests?sub=${encodeURIComponent(sub)}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -126,23 +138,23 @@ class BackendClient {
   }
 
   async getRideRequest(id: string): Promise<RideRequest> {
-    const res = await fetch(`/api/v1/ride-requests/${id}`)
+    const res = await fetch(apiUrl(`/api/v1/ride-requests/${id}`))
     if (!res.ok) throw new ApiError(res.status, 'could not get ride request')
     return RideRequestSchema.parse(await res.json())
   }
 
   async getIncomingRequests(sub: string): Promise<IncomingRequest[]> {
-    const res = await fetch(`/api/v1/ride-requests/incoming?sub=${encodeURIComponent(sub)}`)
+    const res = await fetch(apiUrl(`/api/v1/ride-requests/incoming?sub=${encodeURIComponent(sub)}`))
     if (!res.ok) return []
     return z.array(IncomingRequestSchema).parse(await res.json())
   }
 
   async acceptRideRequest(id: string, sub: string): Promise<void> {
-    await fetch(`/api/v1/ride-requests/${id}/accept?sub=${encodeURIComponent(sub)}`, { method: 'PATCH' })
+    await fetch(apiUrl(`/api/v1/ride-requests/${id}/accept?sub=${encodeURIComponent(sub)}`), { method: 'PATCH' })
   }
 
   async declineRideRequest(id: string, sub: string): Promise<void> {
-    await fetch(`/api/v1/ride-requests/${id}/decline?sub=${encodeURIComponent(sub)}`, { method: 'PATCH' })
+    await fetch(apiUrl(`/api/v1/ride-requests/${id}/decline?sub=${encodeURIComponent(sub)}`), { method: 'PATCH' })
   }
 }
 

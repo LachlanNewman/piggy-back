@@ -21,3 +21,34 @@ services:
         fromDatabase:
           name: piggy-back-db
           property: connectionString
+
+  - type: web
+    runtime: static
+    name: piggy-back-frontend
+    region: oregon
+    branch: main
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    routes:
+      # SPA catch-all so /callback and other client-side routes resolve.
+      # Must stay last if more specific rules are added above it.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # VITE_* vars are inlined at build time, so changing any of these
+      # requires a rebuild, not just a restart.
+      - key: VITE_API_BASE_URL
+        value: https://piggy-back-97mj.onrender.com
+      # Set in the Dashboard once an OIDC provider is reachable — the Keycloak
+      # in docker-compose.yml is local-only and its realm allows just
+      # http://localhost:5173. VITE_OIDC_REDIRECT_URI must be this site's own
+      # URL + /callback, which isn't known until the service is created.
+      - key: VITE_OIDC_AUTHORITY
+        sync: false
+      - key: VITE_OIDC_CLIENT_ID
+        sync: false
+      - key: VITE_OIDC_REDIRECT_URI
+        sync: false
