@@ -1,15 +1,19 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from 'react-oidc-context'
 import ProfileCompletionForm from '@/components/ProfileCompletionForm'
 import NearbyCarriers, { type Carrier } from '@/components/NearbyCarriers'
 import RideRequestFlow from '@/components/RideRequestFlow'
 import IncomingRequests from '@/components/IncomingRequests'
-import { backendClient } from '@/lib/api/client'
+import { backendClient, type IncomingRequest } from '@/lib/api/client'
 import { hasRefreshCookie } from '@/lib/auth/splitTokenStore'
+import { useEventStream, type ConnectionState } from '@/lib/realtime'
+import { useAlerts } from '@/lib/notifications'
 
-const POLL_INTERVAL_MS = 30_000
+/** Location is pushed on movement, but never more often than this — the
+ *  browser can fire watchPosition many times a second. */
+const LOCATION_THROTTLE_MS = 10_000
 
 type ProfileStatus = 'idle' | 'loading' | 'incomplete' | 'complete'
 
@@ -19,7 +23,14 @@ export default function HomePage() {
   const sessionRestoreAttempted = useRef(false)
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle')
   const [locationDenied, setLocationDenied] = useState(false)
+  const [locationReady, setLocationReady] = useState(false)
   const [selectedCarrier, setSelectedCarrier] = useState<Carrier | null>(null)
+
+  const sub = user?.profile.sub ?? null
+  const ready = isAuthenticated && profileStatus === 'complete' && !!sub
+
+  const { state: connection, subscribe } = useEventStream(ready ? sub : null)
+  const { permission, request: requestAlerts, notify } = useAlerts()
 
   // Restore a session from the refresh-token cookie after a hard reload.
   useEffect(() => {
@@ -32,39 +43,61 @@ export default function HomePage() {
   }, [isLoading, isAuthenticated, signinSilent])
 
   useEffect(() => {
-    if (!isAuthenticated || isLoading || restoringSession || !user) return
+    if (!isAuthenticated || isLoading || restoringSession || !sub) return
     setProfileStatus('loading')
-    backendClient.getUserMe(user.profile.sub)
+    backendClient.getUserMe(sub)
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
-  }, [isAuthenticated, isLoading, restoringSession, user])
+  }, [isAuthenticated, isLoading, restoringSession, sub])
 
-  // Share location so nearby carriers (and riders) can find each other.
+  // Share location continuously so the nearby list reflects where people
+  // actually are. watchPosition lets the device push updates as they happen
+  // rather than waking the GPS on a fixed timer.
   useEffect(() => {
-    if (!isAuthenticated || profileStatus !== 'complete' || !user) return
-    if (!navigator.geolocation) return
+    if (!ready || !sub || !navigator.geolocation) return
 
-    const sub = user.profile.sub
+    let lastPush = 0
+    const watchId = navigator.geolocation.watchPosition(
+      pos => {
+        setLocationDenied(false)
+        const now = Date.now()
+        if (now - lastPush < LOCATION_THROTTLE_MS) return
+        lastPush = now
+        backendClient.pushLocation(sub, pos.coords.latitude, pos.coords.longitude)
+          .then(() => setLocationReady(true))
+          .catch(() => {})
+      },
+      () => setLocationDenied(true),
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 }
+    )
 
-    function pushLocation() {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          backendClient.pushLocation(sub, pos.coords.latitude, pos.coords.longitude).catch(() => {})
-          setLocationDenied(false)
-        },
-        () => setLocationDenied(true)
-      )
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      setLocationReady(false)
     }
+  }, [ready, sub])
 
-    pushLocation()
-    const interval = setInterval(pushLocation, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
-  }, [isAuthenticated, profileStatus, user])
+  const handleNewRequest = useCallback((rr: IncomingRequest) => {
+    notify(
+      'Someone wants a piggyback',
+      `${rr.rider_first_name} ${rr.rider_last_name} — ${rr.pickup_address} to ${rr.dropoff_address}`,
+      rr.id
+    )
+  }, [notify])
+
+  const handleSettled = useCallback((status: 'accepted' | 'declined' | 'expired', carrierName: string) => {
+    const message = {
+      accepted: `${carrierName} accepted — they're on the way.`,
+      declined: `${carrierName} can't carry you right now.`,
+      expired: 'Your request timed out.',
+    }[status]
+    notify('Piggy Back', message, 'ride-status')
+  }, [notify])
 
   function refreshProfileStatus() {
-    if (!user) return
+    if (!sub) return
     setProfileStatus('loading')
-    backendClient.getUserMe(user.profile.sub)
+    backendClient.getUserMe(sub)
       .then(data => setProfileStatus(data?.profile_complete ? 'complete' : 'incomplete'))
       .catch(() => setProfileStatus('incomplete'))
   }
@@ -111,13 +144,14 @@ export default function HomePage() {
     )
   }
 
-  const sub = user!.profile.sub
-
   return (
     <main className="shell">
       <div className="topbar">
         <Brand bare />
-        <button className="btn btn-ghost" onClick={() => signoutRedirect()}>Log out</button>
+        <div className="topbar-actions">
+          <LiveIndicator state={connection} />
+          <button className="btn btn-ghost" onClick={() => signoutRedirect()}>Log out</button>
+        </div>
       </div>
 
       <p className="tiny">
@@ -130,19 +164,46 @@ export default function HomePage() {
         </p>
       )}
 
-      <IncomingRequests sub={sub} pollIntervalMs={POLL_INTERVAL_MS} />
+      {permission === 'default' && (
+        <div className="banner banner-info nudge">
+          <span>Get alerted when someone asks you for a lift.</span>
+          <button className="btn btn-ghost" onClick={requestAlerts}>Turn on alerts</button>
+        </div>
+      )}
+
+      <IncomingRequests
+        sub={sub!}
+        subscribe={subscribe}
+        connection={connection}
+        onNewRequest={handleNewRequest}
+      />
 
       {selectedCarrier ? (
         <RideRequestFlow
-          sub={sub}
+          // Remount per carrier so a finished ride never leaks its outcome
+          // into the next request.
+          key={selectedCarrier.sub}
+          sub={sub!}
           carrier={selectedCarrier}
-          pollIntervalMs={POLL_INTERVAL_MS}
+          subscribe={subscribe}
+          connection={connection}
+          onSettled={handleSettled}
           onDone={() => setSelectedCarrier(null)}
         />
       ) : (
-        <NearbyCarriers sub={sub} onRequestRide={setSelectedCarrier} />
+        <NearbyCarriers sub={sub!} locationReady={locationReady} onRequestRide={setSelectedCarrier} />
       )}
     </main>
+  )
+}
+
+function LiveIndicator({ state }: { state: ConnectionState }) {
+  const label = { live: 'Live', connecting: 'Connecting', offline: 'Offline' }[state]
+  return (
+    <span className={`live live-${state}`} title={`Realtime updates: ${label.toLowerCase()}`}>
+      <span className="live-dot" aria-hidden="true" />
+      {label}
+    </span>
   )
 }
 

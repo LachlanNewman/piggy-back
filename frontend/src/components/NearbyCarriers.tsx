@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { backendClient, ApiError, type NearbyUser } from '@/lib/api/client'
 import { initials } from '@/lib/format'
 
@@ -11,33 +11,58 @@ export interface Carrier {
 
 interface Props {
   sub: string
+  /** Flips true once our own location has reached the backend. Nearby lookups
+   *  404 until then, so the first successful push is the cue to try again. */
+  locationReady: boolean
   onRequestRide: (carrier: Carrier) => void
 }
 
 type ErrorKind = 'location' | 'fetch'
 
-export default function NearbyCarriers({ sub, onRequestRide }: Props) {
+/** Who is nearby changes as people move, and there is no event for it — the
+ *  backend only knows when someone next pushes their location. */
+const REFRESH_MS = 10_000
+
+export default function NearbyCarriers({ sub, locationReady, onRequestRide }: Props) {
   const [carriers, setCarriers] = useState<NearbyUser[] | null>(null)
   const [error, setError] = useState<ErrorKind | null>(null)
   const [loading, setLoading] = useState(true)
+  const loaded = useRef(false)
 
-  const fetchNearby = useCallback(() => {
-    setLoading(true)
-    backendClient.getNearbyUsers(sub)
+  const fetchNearby = useCallback((background = false) => {
+    // Background refreshes must not flash a spinner over a list the user is
+    // reading.
+    if (!background) setLoading(true)
+    return backendClient.getNearbyUsers(sub)
       .then(data => { setCarriers(data); setError(null) })
-      .catch(err => setError(err instanceof ApiError && err.status === 404 ? 'location' : 'fetch'))
-      .finally(() => setLoading(false))
+      .catch(err => {
+        if (!background || !loaded.current) {
+          setError(err instanceof ApiError && err.status === 404 ? 'location' : 'fetch')
+        }
+      })
+      .finally(() => {
+        loaded.current = true
+        if (!background) setLoading(false)
+      })
   }, [sub])
 
   useEffect(() => {
     fetchNearby()
+    const id = setInterval(() => fetchNearby(true), REFRESH_MS)
+    return () => clearInterval(id)
   }, [fetchNearby])
+
+  // Retry the moment our location lands rather than leaving the user staring
+  // at "we need your location" until the next refresh tick.
+  useEffect(() => {
+    if (locationReady) fetchNearby(true)
+  }, [locationReady, fetchNearby])
 
   return (
     <div className="card">
       <div className="card-head">
         <h2 className="card-title">Carriers nearby</h2>
-        <button className="btn btn-ghost" onClick={fetchNearby} disabled={loading}>
+        <button className="btn btn-ghost" onClick={() => fetchNearby()} disabled={loading}>
           {loading ? 'Looking…' : 'Refresh'}
         </button>
       </div>

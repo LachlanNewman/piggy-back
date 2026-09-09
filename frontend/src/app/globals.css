@@ -98,6 +98,54 @@ html, body {
   line-height: 1;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- live indicator ---------- */
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.live-live { color: var(--green); }
+.live-live .live-dot { animation: pulse 2s ease-in-out infinite; }
+.live-connecting { color: var(--ink-3); }
+.live-connecting .live-dot { animation: pulse 1s ease-in-out infinite; }
+.live-offline { color: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none !important; }
+}
+
+.nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* ---------- cards ---------- */
 
 .card {

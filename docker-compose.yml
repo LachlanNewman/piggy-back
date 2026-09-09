@@ -21,6 +21,7 @@ services:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://piggyback:piggyback@postgres:5432/piggyback
+      EVENT_HEARTBEAT_SECONDS: 20
     depends_on:
       postgres:
         condition: service_healthy

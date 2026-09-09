@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"backend/db"
+	"backend/events"
 )
 
 type rideRequestRepository interface {
@@ -36,7 +37,7 @@ type getRideRequestResponse struct {
 	ExpiresAt      string `json:"expires_at"`
 }
 
-func CreateRideRequest(repo rideRequestRepository, ttl time.Duration) http.HandlerFunc {
+func CreateRideRequest(repo rideRequestRepository, ttl time.Duration, pub eventPublisher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -93,6 +94,14 @@ func CreateRideRequest(repo rideRequestRepository, ttl time.Duration) http.Handl
 		}
 
 		slog.Info("ride request created", "id", id, "rider", sub, "driver", body.DriverID)
+
+		// Wake the carrier's open streams so the request shows up immediately
+		// instead of on their next poll.
+		pub.Publish(body.DriverID, events.Event{
+			Type: events.TypeRideRequestCreated,
+			ID:   id,
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(createRideRequestResponse{ID: id})

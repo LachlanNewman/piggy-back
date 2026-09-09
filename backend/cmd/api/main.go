@@ -11,10 +11,15 @@ import (
 
 	"backend/config"
 	"backend/db"
+	"backend/events"
 	"backend/handlers"
 
 	"github.com/caarlos0/env/v11"
 )
+
+// maxLoggedBody caps how much of a response we keep for logging. Without it a
+// long-lived stream (the SSE endpoint) would grow the buffer without bound.
+const maxLoggedBody = 4 << 10
 
 type statusRecorder struct {
 	http.ResponseWriter
@@ -28,8 +33,18 @@ func (r *statusRecorder) WriteHeader(code int) {
 }
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
-	r.body.Write(b)
+	if remaining := maxLoggedBody - r.body.Len(); remaining > 0 {
+		r.body.Write(b[:min(len(b), remaining)])
+	}
 	return r.ResponseWriter.Write(b)
+}
+
+// Flush forwards to the underlying writer. Without it the SSE handler cannot
+// assert http.Flusher through this wrapper and streaming breaks.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func requestLogger(next http.Handler) http.Handler {
@@ -86,9 +101,13 @@ func main() {
 	})
 
 	userDB := db.NewDB(pool)
+	hub := events.NewHub()
 
 	ttl := time.Duration(cfg.RideRequestTTLMinutes) * time.Minute
 	staleThreshold := time.Duration(cfg.LocationPollIntervalSecs*2) * time.Second
+
+	heartbeat := time.Duration(cfg.EventHeartbeatSeconds) * time.Second
+	mux.HandleFunc("/api/v1/events", handlers.Events(hub, heartbeat))
 
 	mux.HandleFunc("/api/v1/users", handlers.CreateUser(userDB))
 	mux.HandleFunc("/api/v1/users/me", handlers.GetUserMe(userDB))
@@ -96,11 +115,11 @@ func main() {
 
 	mux.HandleFunc("/api/v1/location", handlers.PushLocation(userDB))
 
-	mux.HandleFunc("/api/v1/ride-requests", handlers.CreateRideRequest(userDB, ttl))
+	mux.HandleFunc("/api/v1/ride-requests", handlers.CreateRideRequest(userDB, ttl, hub))
 	mux.HandleFunc("/api/v1/ride-requests/incoming", handlers.GetIncomingRequests(userDB))
 	mux.HandleFunc("/api/v1/ride-requests/{id}", handlers.GetRideRequest(userDB))
-	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", handlers.AcceptRideRequest(userDB))
-	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB))
+	mux.HandleFunc("/api/v1/ride-requests/{id}/accept", handlers.AcceptRideRequest(userDB, hub))
+	mux.HandleFunc("/api/v1/ride-requests/{id}/decline", handlers.DeclineRideRequest(userDB, hub))
 
 	log.Println("backend listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", requestLogger(cors(mux))))

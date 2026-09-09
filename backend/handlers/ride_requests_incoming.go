@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"backend/db"
+	"backend/events"
 )
 
 type incomingRideRequestRepository interface {
@@ -70,15 +71,15 @@ func GetIncomingRequests(repo incomingRideRequestRepository) http.HandlerFunc {
 	}
 }
 
-func AcceptRideRequest(repo rideRequestActionRepository) http.HandlerFunc {
-	return rideRequestAction(repo, "accepted", "request already accepted")
+func AcceptRideRequest(repo rideRequestActionRepository, pub eventPublisher) http.HandlerFunc {
+	return rideRequestAction(repo, pub, "accepted", "request already accepted")
 }
 
-func DeclineRideRequest(repo rideRequestActionRepository) http.HandlerFunc {
-	return rideRequestAction(repo, "declined", "request already declined")
+func DeclineRideRequest(repo rideRequestActionRepository, pub eventPublisher) http.HandlerFunc {
+	return rideRequestAction(repo, pub, "declined", "request already declined")
 }
 
-func rideRequestAction(repo rideRequestActionRepository, newStatus, alreadyMsg string) http.HandlerFunc {
+func rideRequestAction(repo rideRequestActionRepository, pub eventPublisher, newStatus, alreadyMsg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -127,6 +128,14 @@ func rideRequestAction(repo rideRequestActionRepository, newStatus, alreadyMsg s
 		}
 
 		slog.Info("ride request "+newStatus, "id", id, "driver", sub)
+
+		// Tell the rider straight away — this is the moment they are waiting on.
+		pub.Publish(rr.RiderID, events.Event{
+			Type:   events.TypeRideRequestUpdated,
+			ID:     id,
+			Status: newStatus,
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"id": id})
 	}

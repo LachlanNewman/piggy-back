@@ -49,6 +49,42 @@ Browser → Next.js (rewrites `/api/:path*` to `BACKEND_URL`) → Backend (Go HT
 
 The Next app has no API routes of its own; `next.config.ts` rewrites `/api/:path*` to the Go backend so the browser stays same-origin.
 
+### Realtime updates
+Ride changes reach the other party over Server-Sent Events rather than polling.
+SSE over WebSockets because the traffic is one-directional (every client action
+is already a REST call), `EventSource` reconnects on its own, and it needs
+nothing outside `net/http`.
+
+- `events/hub.go` — in-process pub/sub keyed by auth subject. `Publish` is
+  non-blocking, so a stalled client can never hold up an HTTP handler.
+- `handlers/events.go` — `GET /api/v1/events?sub=...` holds the stream open,
+  sends a `connected` handshake and a heartbeat comment every
+  `EVENT_HEARTBEAT_SECONDS`.
+- Events are change *signals* (`{type, id, status}`), not data. The client
+  refetches from the REST API on receipt, so response shapes have one source
+  of truth.
+- `CreateRideRequest` notifies the carrier; accept/decline notify the rider.
+
+**`Cache-Control: no-cache, no-transform` on the stream is load-bearing.** Next
+compresses proxied responses, and a gzipping intermediary buffers the stream
+until its window fills — events then arrive minutes late or not at all. The
+`no-transform` directive is what stops it. `X-Accel-Buffering: no` covers nginx.
+`statusRecorder` in `main.go` must also keep its `Flush` method (the SSE handler
+asserts `http.Flusher` through it) and its capped log buffer (an unbounded one
+would grow for the life of every stream).
+
+The hub is in-process: it fans out only to subscribers on this backend
+instance. More than one replica would need a shared broker — Postgres
+LISTEN/NOTIFY behind the same `Publish`/`Subscribe` surface.
+
+On the client, `lib/realtime.ts` owns the `EventSource` and exposes the
+connection state; components poll **only** while the stream is not live
+(`connection !== 'live'`), so polling is a fallback rather than the mechanism.
+Ride expiry is settled client-side against `expires_at` (`lib/time.ts`) — the
+server only marks it lazily on read, so the countdown is what ends a request on
+time. Browser notifications (`lib/notifications.ts`) are opt-in, requested from
+a click, and suppressed while the tab is visible.
+
 Auth flow: Frontend → Keycloak (OIDC code flow, port 8180) → tokens stored via `SplitTokenStore` (refresh token in a cookie, access/id tokens in memory) → `react-oidc-context` provides auth state. Auth is client-only: `app/providers.tsx` mounts `AuthProvider` after hydration because `oidc-client-ts` touches browser storage on construction.
 
 ### Backend (`backend/`)
@@ -64,6 +100,8 @@ Package layout:
 - `handlers/users.go` — `CreateUser` handler (`POST /api/v1/users`)
 - `handlers/users_me.go` — `GetUserMe` handler (`GET /api/v1/users/me?sub=...`)
 - `handlers/ride_requests.go` — ride request handlers
+- `handlers/events.go` — SSE stream endpoint
+- `events/hub.go` — in-process pub/sub fanning changes out to open streams
 
 No framework (no Gin/Echo/Chi); uses `net/http` only.
 
@@ -72,6 +110,7 @@ No framework (no Gin/Echo/Chi); uses `net/http` only.
 |--------|-----------------------------|--------------------|
 | GET    | `/api/health`               | inline health check |
 | GET    | `/api/hello`                | inline hello        |
+| GET    | `/api/v1/events`            | Events (SSE stream) |
 | POST   | `/api/v1/users`             | CreateUser          |
 | GET    | `/api/v1/users/me`          | GetUserMe           |
 | GET    | `/api/v1/users/nearby`      | GetNearbyUsers      |
@@ -90,8 +129,11 @@ No framework (no Gin/Echo/Chi); uses `net/http` only.
 - `app/globals.css` — the design system (tokens, cards, buttons, forms, light/dark)
 - `components/ProfileCompletionForm.tsx` — shown when `profile_complete` is false; POSTs to `/api/v1/users`
 - `components/NearbyCarriers.tsx` — nearby users available to carry; exports the `Carrier` type
-- `components/RideRequestFlow.tsx` — pickup/drop-off form, then polls the request until accepted/declined/expired
-- `components/IncomingRequests.tsx` — polls requests addressed to you; accept/decline
+- `components/RideRequestFlow.tsx` — pickup/drop-off form, then follows the request live until accepted/declined/expired
+- `components/IncomingRequests.tsx` — requests addressed to you; accept/decline, live via SSE
+- `lib/realtime.ts` — `EventSource` lifecycle and connection state
+- `lib/notifications.ts` — opt-in browser notifications
+- `lib/time.ts` — shared clock, countdowns, client-side expiry
 - `lib/api/client.ts` — typed backend client; zod-validated responses, `ApiError` for non-2xx
 - `lib/auth/splitTokenStore.ts` — custom OIDC token store: access/id tokens in memory, refresh token in a cookie
 - `lib/format.ts` — small display helpers
@@ -106,6 +148,10 @@ Goose manages migrations via embedded SQL in `db/migrations/`. Migrations run au
 
 ### Testing
 - Handler tests: `handlers/*_test.go` — mock the repository interface, no real DB
+- Realtime: `events/hub_test.go` (concurrency, run with `-race`),
+  `handlers/events_test.go` (stream framing and headers), and
+  `handlers/realtime_integration_test.go` (create → notify → accept → notify
+  over a real `httptest` server)
 - DB tests: `db/*_test.go` — mock the `querier` interface (`pgx.Row`), no `DATABASE_URL` required
 - Validator uses json field names (registered via `RegisterTagNameFunc`)
 

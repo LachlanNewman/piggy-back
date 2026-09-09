@@ -1,45 +1,74 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { backendClient, ApiError } from '@/lib/api/client'
+import { useState, useEffect, useCallback } from 'react'
+import { backendClient, ApiError, type RideRequest } from '@/lib/api/client'
+import { useNow, msUntil, formatCountdown } from '@/lib/time'
+import { useRideEvents, type ConnectionState, type RideEvent } from '@/lib/realtime'
 import type { Carrier } from './NearbyCarriers'
 
 interface Props {
   sub: string
   carrier: Carrier
-  pollIntervalMs: number
+  subscribe: (listener: (e: RideEvent) => void) => () => void
+  connection: ConnectionState
+  onSettled: (status: SettledStatus, carrierName: string) => void
   onDone: () => void
 }
 
-type RideStatus = 'accepted' | 'declined' | 'expired'
+type SettledStatus = 'accepted' | 'declined' | 'expired'
 
-const TERMINAL: RideStatus[] = ['accepted', 'declined', 'expired']
+/** Safety net only — while the stream is live the server pushes the answer. */
+const FALLBACK_POLL_MS = 10_000
 
-export default function RideRequestFlow({ sub, carrier, pollIntervalMs, onDone }: Props) {
+export default function RideRequestFlow({
+  sub, carrier, subscribe, connection, onSettled, onDone,
+}: Props) {
   const [pickup, setPickup] = useState('')
   const [dropoff, setDropoff] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [requestId, setRequestId] = useState<string | null>(null)
-  const [status, setStatus] = useState<RideStatus | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [request, setRequest] = useState<RideRequest | null>(null)
+  const [announced, setAnnounced] = useState(false)
+  const now = useNow()
+
+  const refresh = useCallback(() => {
+    if (!requestId) return
+    backendClient.getRideRequest(requestId).then(setRequest).catch(() => {})
+  }, [requestId])
 
   useEffect(() => {
-    if (!requestId) return
-    intervalRef.current = setInterval(() => {
-      backendClient.getRideRequest(requestId)
-        .then(data => {
-          if (TERMINAL.includes(data.status as RideStatus)) {
-            setStatus(data.status as RideStatus)
-            if (intervalRef.current) clearInterval(intervalRef.current)
-          }
-        })
-        .catch(() => {})
-    }, pollIntervalMs)
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+    refresh()
+  }, [refresh])
+
+  // The live path: the carrier's answer lands here as it happens.
+  useRideEvents(subscribe, event => {
+    if (event.type === 'ride_request.updated' && event.id === requestId) refresh()
+  })
+
+  useEffect(() => {
+    if (connection === 'live' || !requestId) return
+    const id = setInterval(refresh, FALLBACK_POLL_MS)
+    return () => clearInterval(id)
+  }, [connection, requestId, refresh])
+
+  // The server marks a request expired lazily, on read. The deadline is known
+  // up front, so the countdown settles it on the exact second instead.
+  const remaining = request ? msUntil(request.expires_at, now) : 0
+  const status: SettledStatus | 'pending' | null = !request
+    ? null
+    : request.status === 'accepted' || request.status === 'declined' || request.status === 'expired'
+      ? request.status
+      : remaining > 0
+        ? 'pending'
+        : 'expired'
+
+  useEffect(() => {
+    if (!announced && status && status !== 'pending') {
+      setAnnounced(true)
+      onSettled(status, carrier.name)
     }
-  }, [requestId, pollIntervalMs])
+  }, [status, announced, onSettled, carrier.name])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -107,7 +136,11 @@ export default function RideRequestFlow({ sub, carrier, pollIntervalMs, onDone }
       <div className="card status-card">
         <div className="status-emoji">🐷</div>
         <h2>Waiting on {carrier.name}<span className="dots" /></h2>
-        <p className="muted">We&apos;ll let you know the moment they accept.</p>
+        <p className="muted">
+          {request
+            ? `They have ${formatCountdown(remaining)} to answer.`
+            : 'Sending your request…'}
+        </p>
         <div className="btn-row">
           <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
         </div>
